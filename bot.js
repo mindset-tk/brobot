@@ -115,26 +115,28 @@ client.on('raw', async event => {
 		client.emit(events[event.t]);
 		return;
 	}
-	const { d: data } = event;
-	const user = client.users.get(data.user_id);
-	const channel = client.channels.get(data.channel_id) || await user.createDM();
+	else {
+		const { d: data } = event;
+		const user = client.users.get(data.user_id);
+		const channel = client.channels.get(data.channel_id) || await user.createDM();
 
-	// prevent confusion between cached and uncached messages; ensure event only occurs once per message
-	// this may not be working as expected.
-	// if (channel.messages.has(data.message_id)) return;
+		// prevent confusion between cached and uncached messages; ensure event only occurs once per message
+		// this may not be working as expected.
+		// if (channel.messages.has(data.message_id)) return;
 
-	// get message and emoji info
-	const message = await channel.fetchMessage(data.message_id);
-	const emojiKey = (data.emoji.id) ? `${data.emoji.name}:${data.emoji.id}` : data.emoji.name;
+		// get message and emoji info
+		const message = await channel.fetchMessage(data.message_id);
+		const emojiKey = (data.emoji.id) ? `${data.emoji.name}:${data.emoji.id}` : data.emoji.name;
 
-	let reaction = message.reactions.get(emojiKey);
+		let reaction = message.reactions.get(emojiKey);
 
-	if (!reaction) {
-	// Create an object that can be passed through the event to prevent errors.
-		const emoji = new Discord.Emoji(client.guilds.get(data.guild_id), data.emoji);
-		reaction = new Discord.MessageReaction(message, emoji, 1, data.user_id === client.user.id);
+		if (!reaction) {
+			// Create an object that can be passed through the event to prevent errors.
+			const emoji = new Discord.Emoji(client.guilds.get(data.guild_id), data.emoji);
+			reaction = new Discord.MessageReaction(message, emoji, 1, data.user_id === client.user.id);
+		}
+		client.emit(events[event.t], reaction, user, message);
 	}
-	client.emit(events[event.t], reaction, user, message);
 });
 
 // handlers for reaction added/removed
