@@ -104,19 +104,19 @@ client.on('channelUpdate', async (oldChannel, newChannel) => {
 	}
 });
 
-// Raw event listener.
-client.on('raw', async event => {
-	// console.log(event);
-	// ensure the 't' field exists on any event read; return if it does not.
+// Raw packet listener and event emitter.
+client.on('raw', async packet => {
+	// console.log(packet);
+	// ensure the 't' field exists on any packet read; return if it does not.
 	// eslint-disable-next-line no-prototype-builtins
-	if (!events.hasOwnProperty(event.t)) return;
-	// check if it is a reconnect event and log to console that connection has resumed.
-	if (event.t === 'RESUMED') {
-		client.emit(events[event.t]);
+	if (!events.hasOwnProperty(packet.t)) return;
+	// check if it is a reconnect packet and emit reconnection event.
+	if (packet.t === 'RESUMED') {
+		client.emit(events[packet.t]);
 		return;
 	}
 	else {
-		const { d: data } = event;
+		const { d: data } = packet;
 		const user = client.users.get(data.user_id);
 		const channel = client.channels.get(data.channel_id) || await user.createDM();
 
@@ -135,7 +135,7 @@ client.on('raw', async event => {
 			const emoji = new Discord.Emoji(client.guilds.get(data.guild_id), data.emoji);
 			reaction = new Discord.MessageReaction(message, emoji, 1, data.user_id === client.user.id);
 		}
-		client.emit(events[event.t], reaction, user, message);
+		client.emit(events[packet.t], reaction, user, message);
 	}
 });
 
