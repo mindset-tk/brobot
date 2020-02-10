@@ -1,4 +1,6 @@
-const { roleBros } = require('../config.json');
+const path = require('path');
+const configPath = path.resolve('./config.json');
+const config = require(configPath);
 
 module.exports = {
 	name: 'unbro',
@@ -9,11 +11,11 @@ module.exports = {
 	execute(message) {
 		if (message.mentions.members.first()) {
 			const target = message.mentions.members.first();
-			if (message.member.roles.has(roleBros) && target.roles.has(roleBros)) {
+			if (message.member.roles.has(config.roleBros) && target.roles.has(config.roleBros)) {
 				message.channel.send('Removing bro status from ' + target + '.');
-				target.removeRole(roleBros);
+				target.removeRole(config.roleBros);
 			}
-			else if(!target.roles.has(roleBros)) {
+			else if(!target.roles.has(config.roleBros)) {
 				message.channel.send(target + ' is not a member of the Bros role!');
 			}
 			else {

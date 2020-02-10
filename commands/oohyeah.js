@@ -3,7 +3,7 @@ module.exports = {
 	aliases: ['ping', 'beep'],
 	description: 'Pings bot to verify operation',
 	cooldown: 3,
-	execute(message, args) {
+	execute(message) {
 		message.channel.send('DIG IT!!');
 	},
 };

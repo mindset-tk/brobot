@@ -1,4 +1,6 @@
-/* const { roleEveryone } = require('../config.json');
+/* const path = require('path');
+const configPath = path.resolve('./config.json');
+const config = require(configPath);
 
 
 module.exports = {

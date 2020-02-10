@@ -1,4 +1,6 @@
-const { roleBros, roleEveryone } = require('../config.json');
+const path = require('path');
+const configPath = path.resolve('./config.json');
+const config = require(configPath);
 
 module.exports = {
 	name: 'initperms',
@@ -13,7 +15,7 @@ parent category of a channel (does not affect permissions of the channel itself 
 		let targetcategory;
 		let cat;
 		const guild = message.guild;
-		if (!message.member.roles.has(roleBros)) {
+		if (!message.member.roles.has(config.roleBros)) {
 			message.channel.send('You don\'t have permissions to do that!');
 			return;
 		}
@@ -35,11 +37,11 @@ parent category of a channel (does not affect permissions of the channel itself 
 				targetcategory.replacePermissionOverwrites({
 					overwrites: [
 						{
-							id: roleBros,
+							id: config.roleBros,
 							allow: 7168,
 						},
 						{
-							id: roleEveryone,
+							id: config.roleEveryone,
 							deny: 7168,
 						},
 					],

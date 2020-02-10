@@ -1,5 +1,6 @@
-const { roleBros } = require('../config.json');
-const { botID } = require('../config.json');
+const path = require('path');
+const configPath = path.resolve('./config.json');
+const config = require(configPath);
 
 module.exports = {
 	name: 'bro',
@@ -10,14 +11,14 @@ module.exports = {
 	execute(message) {
 		if (message.mentions.members.first()) {
 			const target = message.mentions.members.first();
-			if (message.member.roles.has(roleBros) && !target.roles.has(roleBros) && target.user.id !== botID) {
+			if (message.member.roles.has(config.roleBros) && !target.roles.has(config.roleBros) && target.user.id !== config.botID) {
 				message.channel.send('Elevating ' + target + ' to Bro');
-				target.addRole(roleBros);
+				target.addRole(config.roleBros);
 			}
-			else if (target.user.id == botID) {
+			else if (target.user.id == config.botID) {
 				message.channel.send('The Bros role is not used for bots!');
 			}
-			else if (target.roles.has(roleBros)) {
+			else if (target.roles.has(config.roleBros)) {
 				message.channel.send(target + ' is already a member of the Bros role!');
 			}
 			else {

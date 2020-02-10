@@ -7,7 +7,7 @@ module.exports = {
 	aliases: ['youtube'],
 	description: 'Searches youtube and links the first result. If you use a video id it will link directly to the video. Performing the command without arguments will link TLO Roll Call.',
 	cooldown: 5,
-	usage: '<search query>',
+	usage: '[search query]',
 	execute(message, args) {
 		async function vidsearch() {
 			if (!args.length) {

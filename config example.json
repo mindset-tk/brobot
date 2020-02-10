@@ -1,16 +1,16 @@
 {
 	"prefix": "!",
 	"authtoken": "",
-
 	"serverID":"",
 	"botID":"",
-	
 	"roleAdmin": "",
 	"roleBros": "",
 	"roleEveryone": "" ,
-	
 	"channelAnnouncements": "",
 	"channelBotTest": "",
-
-	"ytAPIkey": ""
+	"ytAPIkey": "",
+	"currentActivity": {
+		"Type": "",
+		"Name": ""
+	   }
 }
