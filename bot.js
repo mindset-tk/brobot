@@ -179,7 +179,6 @@ client.on('messageReactionRemove', (reaction, user, message) => {
 });
 
 client.on('Reconnected', () => {
-	console.log('Reconnected!');
 });
 
 // very basic error handling.
