@@ -18,7 +18,7 @@ module.exports = {
 
     // get user nickname for reply
     async function getnickname() {
-      const user = client.users.get(message.author.id);
+      const user = client.users.cache.get(message.author.id);
       const guild = message.guild;
       const guildmember = guild.member(user);
       return guildmember.nickname;

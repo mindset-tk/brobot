@@ -30,7 +30,7 @@ module.exports = {
       'Very doubtful.',
       'Definitely not.'];
     const answer = rand[Math.floor(Math.random() * rand.length)];
-    const Magic8ballembed = new Discord.RichEmbed()
+    const Magic8ballembed = new Discord.MessageEmbed()
       .setTitle('Magic 8-Ball')
       .setDescription(message.author + ' asked a question of my magic 8-ball.')
       .addField(':question: **Question**', '*' + args.join(' ') + '*')

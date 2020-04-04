@@ -98,7 +98,7 @@ client.on('message', message => {
 
 // reads channel updates and reports topic change to channel
 client.on('channelUpdate', async (oldChannel, newChannel) => {
-  const server = client.guilds.get(config.serverID);
+  const server = client.guilds.cache.get(config.serverID);
   const channelupdateentry = await server.fetchAuditLogs().then(audit => audit.entries.first());
   if (oldChannel.topic != newChannel.topic) {
     newChannel.send(channelupdateentry.executor + ' has changed the topic to: \n *' + newChannel.topic + '*');
@@ -117,15 +117,15 @@ client.on('raw', async packet => {
   }
   else {
     const { d: data } = packet;
-    const user = client.users.get(data.user_id);
-    const channel = client.channels.get(data.channel_id) || await user.createDM();
+    const user = client.users.cache.get(data.user_id);
+    const channel = client.channels.cache.get(data.channel_id) || await user.createDM();
 
     // prevent confusion between cached and uncached messages; ensure event only occurs once per message
     // this may not be working as expected.
     // if (channel.messages.has(data.message_id)) return;
 
     // fetch info about the message the reaction was added to.
-    const message = await channel.fetchMessage(data.message_id);
+    const message = await channel.messages.fetch(data.message_id);
     // custom emojis reactions are keyed in a `name:ID` format, while unicode emojis are keyed by names
     const emojiKey = (data.emoji.id) ? `${data.emoji.name}:${data.emoji.id}` : data.emoji.name;
 
@@ -134,7 +134,7 @@ client.on('raw', async packet => {
     // If the message has no reaction after this packet (possible when reactions are removed)
     // Create a new object representing the removal of the emoji.
     if (!reaction) {
-      const emoji = new Discord.Emoji(client.guilds.get(data.guild_id), data.emoji);
+      const emoji = new Discord.Emoji(client.guilds.cache.get(data.guild_id), data.emoji);
       reaction = new Discord.MessageReaction(message, emoji, 1, data.user_id === client.user.id);
     }
     client.emit(events[packet.t], reaction, user, message);
@@ -182,22 +182,13 @@ client.on('Reconnected', () => {
   // on reconnect actions here
 });
 
-// very basic error handling.
-// console will log the error but take no further action.
-// if the error is not fatal the bot will continue running.
-client.on('error', err => {
+// Connection error logging
+client.on('shardError', err => {
   const date = new Date().toLocaleString();
-  const ErrTargetPrototype = Object.getPrototypeOf(err.target);
   // If the error is a network error, display error message.
-  if (ErrTargetPrototype.constructor.name == 'WebSocket') {
-    console.log('[' + date + ']: Connection Error! The error was: "' + err.message + '". Will automatically attempt to reconnect.');
-    return;
-  }
-  // Else, display full error object.
-  else {
-    console.error('[' + date + ']:' + err);
-    return;
-  }
+  console.log('[' + date + ']: Connection Error! The error was: "' + err.message + '". Will automatically attempt to reconnect.');
 });
+
+client.on('error', err => {console.error(err);});
 
 process.on('unhandledRejection', error => console.error('Uncaught Promise Rejection! Error details:\n', error));

@@ -8,7 +8,7 @@ module.exports = {
   description: 'Toggle admin status on sender. Only works if sender has the Bros role.',
   guildOnly: true,
   execute(message, args, client) {
-    const announcements = client.channels.get(config.channelAnnouncements);
+    const announcements = client.channels.cache.get(config.channelAnnouncements);
     if (message.member.roles.has(config.roleBros) && !message.member.roles.has(config.roleAdmin)) {
       message.channel.send('Elevating you to Admin');
       announcements.send('@everyone : ' + message.author + ' has escalated to admin!');

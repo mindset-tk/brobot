@@ -28,7 +28,7 @@ parent category of a channel (does not affect permissions of the channel itself 
       }
       if (args[args.length - 1] == '-category') {
         cat = 1;
-        targetcategory = guild.channels.get(targetchannel.parentID);
+        targetcategory = guild.channels.cache.get(targetchannel.parentID);
       }
       else {
         cat = 0;
