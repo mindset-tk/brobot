@@ -9,12 +9,12 @@ module.exports = {
   guildOnly: true,
   execute(message, args, client) {
     const announcements = client.channels.cache.get(config.channelAnnouncements);
-    if (message.member.roles.has(config.roleBros) && !message.member.roles.has(config.roleAdmin)) {
+    if (message.member.roles.cache.has(config.roleBros) && !message.member.roles.cache.has(config.roleAdmin)) {
       message.channel.send('Elevating you to Admin');
       announcements.send('@everyone : ' + message.author + ' has escalated to admin!');
       message.member.addRole(config.roleAdmin);
     }
-    else if (message.member.roles.has(config.roleBros) && message.member.roles.has(config.roleAdmin)) {
+    else if (message.member.roles.cache.has(config.roleBros) && message.member.roles.cache.has(config.roleAdmin)) {
       message.channel.send('De-elevating you from Admin');
       announcements.send('@everyone : ' + message.author + ' has de-escalated from admin!');
       message.member.removeRole(config.roleAdmin);

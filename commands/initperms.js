@@ -15,7 +15,7 @@ parent category of a channel (does not affect permissions of the channel itself 
     let targetcategory;
     let cat;
     const guild = message.guild;
-    if (!message.member.roles.has(config.roleBros)) {
+    if (!message.member.roles.cache.has(config.roleBros)) {
       message.channel.send('You don\'t have permissions to do that!');
       return;
     }

@@ -43,7 +43,7 @@ client.on('message', message => {
     message.delete();
     return;
   }
-  if (!message.content.startsWith(config.prefix) || message.author.bot || !message.member.roles.has(config.roleBros)) return;
+  if (!message.content.startsWith(config.prefix) || message.author.bot || !message.member.roles.cache.has(config.roleBros)) return;
 
   const args = message.content.slice(config.prefix.length).split(/ +/);
   const commandName = args.shift().toLowerCase();

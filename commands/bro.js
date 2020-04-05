@@ -11,7 +11,7 @@ module.exports = {
   execute(message) {
     if (message.mentions.members.first()) {
       const target = message.mentions.members.first();
-      if (message.member.roles.has(config.roleBros) && !target.roles.has(config.roleBros) && target.user.id !== config.botID) {
+      if (message.member.roles.cache.has(config.roleBros) && !target.roles.has(config.roleBros) && target.user.id !== config.botID) {
         message.channel.send('Elevating ' + target + ' to Bro');
         target.addRole(config.roleBros);
       }

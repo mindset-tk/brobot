@@ -11,7 +11,7 @@ module.exports = {
   execute(message) {
     if (message.mentions.members.first()) {
       const target = message.mentions.members.first();
-      if (message.member.roles.has(config.roleBros) && target.roles.has(config.roleBros)) {
+      if (message.member.roles.cache.has(config.roleBros) && target.roles.has(config.roleBros)) {
         message.channel.send('Removing bro status from ' + target + '.');
         target.removeRole(config.roleBros);
       }

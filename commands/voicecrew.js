@@ -20,14 +20,14 @@ module.exports = {
       message.channel.send('I\'d love to join Voice Crew but I just can\'t. Sorry!');
       return;
     }
-    if (message.member.roles.has(config.roleBros) && !target.roles.has(config.roleVoiceCrew)) {
+    if (message.member.roles.cache.has(config.roleBros) && !target.roles.has(config.roleVoiceCrew)) {
       if (message.member == target) {
         message.channel.send('Adding you to Voice Crew!');
       }
       else { message.channel.send('Adding ' + target + ' to Voice Crew'); }
       target.addRole(config.roleVoiceCrew);
     }
-    else if (message.member.roles.has(config.roleBros) && target.roles.has(config.roleVoiceCrew)) {
+    else if (message.member.roles.cache.has(config.roleBros) && target.roles.has(config.roleVoiceCrew)) {
       if (message.member == target) {
         message.channel.send('Removed you from Voice Crew!');
       }
