@@ -101,7 +101,7 @@ client.on('channelUpdate', async (oldChannel, newChannel) => {
   const server = client.guilds.cache.get(config.serverID);
   const channelupdateentry = await server.fetchAuditLogs().then(audit => audit.entries.first());
   if (oldChannel.topic != newChannel.topic) {
-    newChannel.send(channelupdateentry.executor + ' has changed the topic to: \n *' + newChannel.topic + '*');
+    newChannel.send(`${channelupdateentry.executor} has changed the topic to: \n *${newChannel.topic}*`);
   }
 });
 
@@ -115,7 +115,7 @@ client.on('raw', async packet => {
     client.emit(events[packet.t]);
     return;
   }
-  else {
+  else if (['MESSAGE_REACTION_ADD', 'MESSAGE_REACTION_REMOVE'].includes(packet.t)) {
     const { d: data } = packet;
     const user = client.users.cache.get(data.user_id);
     const channel = client.channels.cache.get(data.channel_id) || await user.createDM();
@@ -128,14 +128,12 @@ client.on('raw', async packet => {
     const message = await channel.messages.fetch(data.message_id);
     // custom emojis reactions are keyed in a `name:ID` format, while unicode emojis are keyed by names
     const emojiKey = (data.emoji.id) ? `${data.emoji.name}:${data.emoji.id}` : data.emoji.name;
-
-    let reaction = message.reactions.get(emojiKey);
-
+    let reaction = message.reactions.cache.get(emojiKey);
+    // console.log(reaction);
     // If the message has no reaction after this packet (possible when reactions are removed)
-    // Create a new object representing the removal of the emoji.
+    // Create a new messagereaction object representing the removal of the emoji.
     if (!reaction) {
-      const emoji = new Discord.Emoji(client.guilds.cache.get(data.guild_id), data.emoji);
-      reaction = new Discord.MessageReaction(message, emoji, 1, data.user_id === client.user.id);
+      reaction = new Discord.MessageReaction(client, data, message);
     }
     client.emit(events[packet.t], reaction, user, message);
   }
