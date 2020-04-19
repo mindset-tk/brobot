@@ -4,6 +4,24 @@ const Discord = require('discord.js');
 const configPath = './config.json';
 const config = require(configPath);
 
+Discord.Structures.extend('Guild', Guild => {
+  class MusicGuild extends Guild {
+    constructor(client, data) {
+      super(client, data);
+      this.musicData = {
+        queue: [],
+        isPlaying: false,
+        volume: 0.1,
+        songDispatcher: null,
+        voiceChannel: null,
+        voiceTextChannel: null,
+        nowPlaying: null,
+      };
+    }
+  }
+  return MusicGuild;
+});
+
 // initialize client, commands, command cooldown collections
 const client = new Discord.Client();
 client.commands = new Discord.Collection();
