@@ -147,6 +147,12 @@ If the bot is the only user in a voice channel when it finishes playback of the 
       const playlist = await YT.getPlaylistByID(query.match(isPlaylist)[1]);
       const videosObj = await playlist.getVideos();
       for (let i = 0; i < videosObj.length; i++) {
+        try {
+          await videosObj[i].fetch();
+        }
+        catch (err) {
+          i++;
+        }
         const video = await videosObj[i].fetch();
         const url = video.url;
         const title = video.raw.snippet.title;
@@ -213,7 +219,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
         return message.channel.send(`:musical_note:  ${song.title} :musical_note: has been added to queue!`);
       }
     }
-    if ((query.match(isPlaylist) || query.match(isPlaylist)) && args.length > 1) { return message.channel.send(`Too many arguments! Please try **${config.prefix}help yt** for help.`); }
+    if ((query.match(isPlaylist) || query.match(isPlaylist)) && args.length > 1) { return message.channel.send(`Too many arguments! Please try **${config.prefix}help play** for help.`); }
     if (args[0].toLowerCase() == 'list' && !args[1]) {
       if (!message.guild.musicData.isPlaying) { return message.channel.send('Nothing is currently playing!'); }
       const titleArray = [];
@@ -226,6 +232,13 @@ If the bot is the only user in a voice channel when it finishes playback of the 
       if (titleArray.length == 0) {queueData.push('There are no songs in queue after the current song.'); }
       for (let i = 0; i < titleArray.length; i++) {
         queueData.push(`**${i + 1}.** ${titleArray[i]}`);
+        const queueField = queueData.join('\n');
+        if (queueField.length > 1023) {
+          queueData.pop();
+          queueData.pop();
+          queueData.push (`${titleArray.length - queueData.length - 1} additional songs I couldn't show.`);
+          i = titleArray.length;
+        }
       }
       queueEmbed.addField('Music queue', queueData.join('\n'));
       return message.channel.send(queueEmbed);
