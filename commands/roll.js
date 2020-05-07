@@ -1,100 +1,194 @@
+const path = require('path');
+const configPath = path.resolve('./config.json');
+const config = require(configPath);
+
 module.exports = {
   name: 'roll',
-  description: 'Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.',
-  cooldown: 5,
-  usage: '<#dice>d<#sides>±<modifier> (ex. 2d6+1)',
-
+  description: '[testing version for expanded die rolls] Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.',
+  cooldown: 1,
+  usage: `#d#±# (ex. 2d6+1) for standard usage. You may drop the #dice to only roll 1 (ex. d6+1 will roll 1d6+1)
+**${config.prefix}roll 1d#±#a** to roll 2 dice with advantage (ex. 1d20a, d20a, d20+1a are all valid)
+**${config.prefix}roll 1d#±#d** to roll 2 dice with disadvantage (ex. 1d20d, d20d, d20+1d are all valid)
+*Note: advantage and disadvantage must be with a single die; they will not run with more than 1 die.*
+__**ADVANCED USAGE**__
+The bot can keep or drop highest/lowest n dice:
+**${config.prefix}roll #d#±#__kh__#** will keep the highest # dice. (ex 4d6+2kh3 would keep the highest 3 dice out of a 4d6+2 roll)
+Replace kh above with the following options:
+kh# - keep highest #
+kl# - keep lowest #
+dh# - drop highest #
+dl# - drop lowest #`,
   async execute(message, args, client) {
-
+    // Regex to test input against.
+    // Regex groups: 1 is numdice, 2 is sides, 3 is +/-, 4 is bonus, 5 is the addendum in full (kh1/dl1/a/d etc)
+    const diceRegex = new RegExp(/([0-9]+)d([0-9]+)([+-])?([0-9]+)?(.+)?/);
+    // Regex to work with special addendums for keeping/dropping stuff
+    // group 1 is kh/dl/kl/dh
+    const advancedRegex = new RegExp(/(kh|dl|kl|dh)([0-9]+)/);
     // check for blank arguments
-    if (!args.length) {
-      message.channel.send('You need to provide dice to roll!');
-      return;
-    }
-    else if (args.length > 10) {
-      message.channel.send('The maximum number of rolls at one time is 10.');
-      return;
+    if (!args.length) { return message.channel.send('You need to provide dice to roll!'); }
+    // check for too many args
+    else if (args.length > 10) { return message.channel.send('The maximum number of separate rolls at one time is 10.'); }
+
+    // function to roll x dice with y sides
+    function rollDice(dice, sides) {
+      const arr = [];
+      for (let i = 0; i < dice; i++) {
+        arr.push(Math.floor(Math.random() * sides + 1));
+      }
+      // sort ascending
+      arr.sort((a, b) => a - b);
+      return arr;
     }
 
-    // get user nickname for reply
+    // func to convert to standard dnotation
+    function convertToD(dice, sides, mod) {
+      let convertedString = `${dice}d${sides}`;
+      if (mod != 0) {
+        if (mod > 0) {convertedString = `${convertedString}+${mod}`;}
+        if (mod < 0) {convertedString = `${convertedString}${mod}`;}
+      }
+      return convertedString;
+    }
+
     async function getnickname() {
       const user = client.users.cache.get(message.author.id);
       const guild = message.guild;
       const guildmember = guild.member(user);
       return guildmember.nickname;
     }
-
     const nickname = await getnickname();
 
-    // Check function for inputs. Returns true if input is null, a decimal number, or too big/large
-    function dicecheck(num) {
-      if (num % 1 != 0) return true;
-      else if (isNaN(num)) return true;
-      else if (!(num > 0 && num <= 1000)) return true;
-      else return false;
-    }
-    const data = [];
-    data.push(nickname + ' made the following rolls:');
-    // runs through each argument and attempts to roll dice, then replies with dice info.
-    args.forEach(function(dieroll) {
-      let totalroll = 0;
-      let dice = new Array(2);
-      let alldice = new String;
-      let modifier = 0;
-      // parse standard dice notation into an array called "dice", then check if input data is valid.
-      dice = dieroll.split('d');
-      if (dieroll.includes('+')) {
-        modifier = parseInt(dieroll.split('+')[1]);
-        dice[1] = dice[1].split('+')[0];
+    if (args.length > 10) { return message.channel.send('Too many separate rolls. Please make no more than 10 individual rolls at a time.'); }
+
+    // format args in lowercase and, if any of the entries are in simplified "d##" format, append a 1 to the beginning.
+    args.forEach((data, index) => {
+      data = data.toLowerCase();
+      if (data.charAt(0) == 'd') {
+        data = '1' + data;
       }
-      else if (dieroll.includes('-')) {
-        modifier = 0 - parseInt(dieroll.split('-')[1]);
-        dice[1] = dice[1].split('-')[0];
+      args[index] = data;
+    });
+
+    const resultArray = [`${nickname} made the following rolls:`];
+
+    args.forEach((input, index) => {
+      if (!input.match(diceRegex)) {
+        return resultArray.push(`I couldn't interpret \`${args[index]}\`, please review your input and try again.`);
+      }
+      let resultStr = '';
+      let diceArr = [];
+      let dnotation;
+      let result;
+      const filteredInput = input.match(diceRegex);
+      // console.log(filteredInput);
+      const numDice = parseInt(filteredInput[1]);
+      const sides = parseInt(filteredInput[2]);
+      if (numDice > 1000 || sides > 1000) { return resultArray.push(`\`${args[index]}\` not accepted. Please do not roll more than 1000 dice or 1000 sides.`); }
+      let modInt = 0;
+      if (filteredInput[3] && filteredInput[4]) {
+        const modSign = filteredInput[3];
+        const modifier = filteredInput[4];
+        // get modifier as a positive/negative int
+        modInt = eval(`0 ${modSign} ${modifier}`);
       }
 
-      if (!dice.some(dicecheck) && dice[1] != '' && !(dice.length > 2)) {
-        const results = new Array;
-        for (let i = 0; i < dice[0]; i++) {
-          results[i] = (Math.floor(Math.random() * dice[1] + 1));
-        }
-        // total up dice as we go, and formulate clean output string.
-        results.forEach(function(roll) {
-          totalroll = totalroll + roll;
-          alldice = alldice + ' ' + roll + ',';
-        });
-        // add modifier only one time.
-        totalroll = totalroll + modifier;
-        // formulate result message and truncate if too long for discord.
-        if (args.length == 1) {
-          let resultstring = (nickname + ' rolled ' + dieroll + ' and got: ' + totalroll + ' [' + alldice.slice(1, -1) + ']');
-          if (!(resultstring.length < 2000 && dice[1] <= 100)) {
-            resultstring = (nickname + ' rolled ' + dieroll + ' and got: ' + totalroll + '. (Too many dice to display individual rolls.)');
-            message.channel.send(resultstring);
-            return;
-          }
-          else {
-            message.channel.send(resultstring);
-            return;
-          }
-        }
-        else if (results.length < 11) {
-          data.push(dieroll + '. Result: ' + totalroll + ' [' + alldice.slice(1, -1) + ']');
+      if (filteredInput[5] == 'a') {
+        if (numDice != 1 && numDice != 2) {
+          return resultArray.push('Please only use 1 die on advantage/disadvantage rolls, (eg. d20a, 1d20a)');
         }
         else {
-          data.push(dieroll + '. Result: ' + totalroll + ' (Too many dice to display individual rolls.)');
+          resultStr = ' with advantage';
+          diceArr = rollDice(2, sides);
+          result = parseInt(diceArr[1]) + modInt;
+          diceArr[1] = '**' + diceArr[1] + '**';
+          dnotation = convertToD(numDice, sides, modInt);
         }
       }
-      else if (dice[0] > 1000 || dice[1] > 1000) {
-        message.channel.send('I\'m sorry, I can\'t roll dice with more than 1000 sides, or more than 1000 dice at a time.');
-        return;
+      else if (filteredInput[5] == 'd') {
+        if (numDice != 1 && numDice != 2) {
+          return resultArray.push('Please only use 1 die on advantage/disadvantage rolls, (eg. d20d, 1d20d)');
+        }
+        else {
+          resultStr = ' with disadvantage';
+          diceArr = rollDice(2, sides);
+          result = diceArr[0] + modInt;
+          diceArr[0] = '**' + diceArr[0] + '**';
+          dnotation = convertToD(numDice, sides, modInt);
+        }
       }
+      else if (filteredInput[5] && filteredInput[5].match(advancedRegex)) {
+        const advData = filteredInput[5].match(advancedRegex);
+        if (advData[2] > numDice) { return resultArray.push(`Invalid entry \`${args[index]}\` Please do not keep/drop more dice than you roll!`);}
+        // note to self: dicearr is in ascending order
+        diceArr = rollDice(numDice, sides);
+        const numAdv = advData[2];
+        let diceToKeep = [];
+        // keep highest
+        if (advData[1] == 'kh') {
+          diceToKeep = diceArr.splice(numDice - numAdv, numDice + 1);
+          if (advData[2] == 0) {
+            result = 0 + modInt;
+          }
+          else { result = diceToKeep.reduce((a, b) => a + b) + modInt; }
+          for(let i = 0; i < diceToKeep.length; i++) {
+            diceToKeep[i] = '**' + diceToKeep[i] + '**';
+          }
+          diceArr = diceArr.concat(diceToKeep);
+          dnotation = convertToD(numDice, sides, modInt);
+          resultStr = `, keeping the highest ${numAdv} dice`;
+        }
+        else if (advData[1] == 'kl') {
+          diceToKeep = diceArr.splice(0, numAdv);
+          if (advData[2] == 0) {
+            result = 0 + modInt;
+          }
+          else { result = diceToKeep.reduce((a, b) => a + b) + modInt; }
+          for(let i = 0; i < diceToKeep.length; i++) {
+            diceToKeep[i] = '**' + diceToKeep[i] + '**';
+          }
+          diceArr = diceToKeep.concat(diceArr);
+          dnotation = convertToD(numDice, sides, modInt);
+          resultStr = `, keeping the lowest ${numAdv} dice`;
+        }
+        else if (advData[1] == 'dh') {
+          diceToKeep = diceArr.splice(0, numDice - numAdv);
+          if (advData[2] == 0) {
+            result = 0 + modInt;
+          }
+          else { result = diceToKeep.reduce((a, b) => a + b) + modInt; }
+          for(let i = 0; i < diceToKeep.length; i++) {
+            diceToKeep[i] = '**' + diceToKeep[i] + '**';
+          }
+          diceArr = diceToKeep.concat(diceArr);
+          dnotation = convertToD(numDice, sides, modInt);
+          resultStr = `, dropping the highest ${numAdv} dice`;
+        }
+        else if (advData[1] == 'dl') {
+          diceToKeep = diceArr.splice(numAdv, numDice + 1);
+          if (advData[2] == 0) {
+            result = 0 + modInt;
+          }
+          else { result = diceToKeep.reduce((a, b) => a + b) + modInt; }
+          for(let i = 0; i < diceToKeep.length; i++) {
+            diceToKeep[i] = '**' + diceToKeep[i] + '**';
+          }
+          diceArr = diceArr.concat(diceToKeep);
+          dnotation = convertToD(numDice, sides, modInt);
+          resultStr = `, dropping the lowest ${numAdv} dice`;
+        }
+      }
+      else if (filteredInput[5] && !filteredInput[5].match(advancedRegex)) { return resultArray.push(`Invalid entry \`${args[index]}\`. Check your syntax, I couldn't parse \`${filteredInput[5]}\`.`);}
       else {
-        message.channel.send('Invalid input detected! Proper form would be #d#. Decimals and negative numbers are not accepted.');
-        return;
+        diceArr = rollDice(numDice, sides);
+        result = diceArr.reduce((a, b) => a + b) + modInt;
+        dnotation = convertToD(numDice, sides, modInt);
       }
+      let resultDice;
+      if (diceArr.length > 25) { resultDice = 'Too many dice to show.'; }
+      else { resultDice = diceArr.join(' '); }
+      return resultArray.push(`${dnotation}${resultStr}. Result: ${result} [${resultDice}]`);
     });
-    if (args.length > 1) {
-      message.channel.send(data, { split: true });
-    }
+    message.channel.send(resultArray.join('\n'), { split: true });
   },
 };
