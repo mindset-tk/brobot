@@ -1,14 +1,27 @@
 {
-	"prefix": "!",
-	"authtoken": "",
-	"serverID":"",
-	"roleAdmin": "",
-	"roleUser": "",
-	"roleEveryone": "" ,
-	"channelAnnouncements": "",
-	"ytAPIkey": "",
-	"currentActivity": {
-		"Type": "",
-		"Name": ""
-	   }
+  "authtoken": "",
+  "prefix": "!",
+  "server 1 ID here" : {
+    "serverID": "",
+    "roleAdmin": "",
+    "roleUser": "",
+    "roleVoiceCrew": "",
+    "roleEveryone": "",
+    "channelAnnouncements": "",
+    "voiceTextChannelIds": [""]
+  },
+  "server 2 ID here" : {
+    "serverID": "",
+    "roleAdmin": "",
+    "roleUser": "",
+    "roleVoiceCrew": "",
+    "roleEveryone": "",
+    "channelAnnouncements": "",
+    "voiceTextChannelIds": [""]
+  },
+  "ytAPIkey": "",
+  "currentActivity": {
+    "Type": "",
+    "Name": ""
+  }
 }

@@ -5,7 +5,7 @@ const config = require(configPath);
 
 module.exports = {
   name: 'roll',
-  description: '[testing version for expanded die rolls] Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.',
+  description: 'Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.',
   cooldown: 1,
   usage: `#d#±# (ex. 2d6+1) for standard usage. You may drop the #dice to only roll 1 (ex. d6+1 will roll 1d6+1)
 **${config.prefix}roll 1d#±#a** to roll 2 dice with advantage (ex. 1d20a, d20a, d20+1a are all valid)
