@@ -2,6 +2,7 @@ const path = require('path');
 const configPath = path.resolve('./config.json');
 const config = require(configPath);
 
+
 module.exports = {
   name: 'roll',
   description: '[testing version for expanded die rolls] Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.',

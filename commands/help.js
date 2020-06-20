@@ -2,19 +2,23 @@ const path = require('path');
 const configPath = path.resolve('./config.json');
 const config = require(configPath);
 
+
 module.exports = {
   name: 'help',
   description: 'List all of my commands or info about a specific command.',
   aliases: ['commands'],
   usage: '[command name]',
   cooldown: 5,
-  execute(message, args) {
+  execute(message, args, client, msgguildid) {
     const data = [];
     const { commands } = message.client;
     if (!args.length) {
       data.push('Here\'s a list of all my commands:');
       // map all command names to an array, filter(Boolean) to remove empty values, then join for clean output
-      data.push(commands.map(command => command.name).filter(Boolean).join('\n'));
+      data.push(commands.map(command => {
+        if (!command.guildLimit) { return command.name; }
+        if (command.guildLimit && command.guildLimit.includes(msgguildid)) { return command.name; }
+      }).filter(Boolean).join('\n'));
       data.push(`You can send \`${config.prefix}help [command name]\` to get info on a specific command!`);
 
       return message.channel.send(data, { split: true });

@@ -2,12 +2,10 @@
 	"prefix": "!",
 	"authtoken": "",
 	"serverID":"",
-	"botID":"",
 	"roleAdmin": "",
-	"roleBros": "",
+	"roleUser": "",
 	"roleEveryone": "" ,
 	"channelAnnouncements": "",
-	"channelBotTest": "",
 	"ytAPIkey": "",
 	"currentActivity": {
 		"Type": "",

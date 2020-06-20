@@ -3,6 +3,7 @@ const path = require('path');
 const configPath = path.resolve('./config.json');
 const config = require(configPath);
 
+
 module.exports = {
   name: 'activity',
   description: 'Change the bot\'s rich presence activity, and sends a message about it.' + '\n If a channel is #mentioned as the first argument, the message will send to that channel; otherwise it will send to the channel the command was used in.' +

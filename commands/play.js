@@ -10,6 +10,7 @@ const config = require(configPath);
 const YT = new YouTube(config.ytAPIkey);
 const wait = require('util').promisify(setTimeout);
 
+
 module.exports = {
   name: 'play',
   description: 'Play any song or playlist from youtube in the voice channel you\'re currently in.',
@@ -35,7 +36,7 @@ The bot will not allow users who aren't in the same voice channel to edit the pl
 If the bot is the only user in a voice channel when it finishes playback of the current song, it will automatically leave. Otherwise, if the playlist is empty, it will wait 1 minute before leaving.`,
   guildOnly: true,
   cooldown: 0.1,
-  async execute(message, args, client) {
+  async execute(message, args, client, msgguildid) {
 
     function formatDuration(APIDuration) {
       const duration = `${APIDuration.hours ? APIDuration.hours + ':' : ''}${
@@ -53,7 +54,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
     // Commands that can be permissibly used by a user that is in a different voice channel.
     const safeCommands = ['stop', 'list'];
 
-    if (!config.voiceTextChannelIds.includes(message.channel.id)) {
+    if (!config[msgguildid].voiceTextChannelIds.includes(message.channel.id)) {
       return message.channel.send('Please use this command only in the #voice-chat channel.');
     }
     const voiceChannel = message.member.voice.channel;
@@ -124,9 +125,11 @@ If the bot is the only user in a voice channel when it finishes playback of the 
             }
           })
           .on('error', e => {
-            message.guild.musicData.voiceTextChannel.send(`Could not play ${queue[0].title}. See console log for details. Skipping to next song...`);
+            message.guild.musicData.voiceTextChannel.send(`Error playing ${message.guild.musicData.nowPlaying.title}. See console log for details. Skipping to next song...`);
+            console.error('Youtube playback error! Error Details: ', e);
+            if (message.guild.musicData.nowPlaying) console.error('Song playing at time of error: ', message.guild.musicData.nowPlaying);
+            if (queue[0]) console.error('Video at top of queue: ', queue[0]);
             queue.shift();
-            console.error(e);
             if (queue.length >= 1) {
               return playSong(queue);
             }

@@ -1,5 +1,6 @@
 const Discord = require('discord.js');
 
+
 module.exports = {
   name: '8ball',
   description: 'magic 8-ball',

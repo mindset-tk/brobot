@@ -2,6 +2,7 @@ const path = require('path');
 const configPath = path.resolve('./config.json');
 const config = require(configPath);
 
+
 module.exports = {
   name: 'initperms',
   description: 'resets/initializes permissions on a channel or category; useful if a channel or category has bad permissions. Use without arguments to initialize the \
@@ -10,12 +11,13 @@ parent category of a channel (does not affect permissions of the channel itself 
 \n\n**NOTE:** If targeting a private channel this will make the channel public!',
   usage: '<#channel> <-category>',
   guildOnly: true,
-  execute(message, args) {
+  guildLimit: ['598939818600300550'],
+  execute(message, args, client, msgguildid) {
     let targetchannel;
     let targetcategory;
     let cat;
     const guild = message.guild;
-    if (!message.member.roles.cache.has(config.roleBros)) {
+    if (!message.member.roles.cache.has(config[msgguildid].roleUser)) {
       message.channel.send('You don\'t have permissions to do that!');
       return;
     }
@@ -37,11 +39,11 @@ parent category of a channel (does not affect permissions of the channel itself 
         targetcategory.replacePermissionOverwrites({
           overwrites: [
             {
-              id: config.roleBros,
+              id: config[msgguildid].roleUser,
               allow: 7168,
             },
             {
-              id: config.roleEveryone,
+              id: config[msgguildid].roleEveryone,
               deny: 7168,
             },
           ],

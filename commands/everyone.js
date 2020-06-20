@@ -4,6 +4,7 @@ const config = require(configPath);
 
 
 module.exports = {
+
 	name: 'everyone',
 	description: 'ping @ everyone. this is a test command.',
 	guildOnly: true,

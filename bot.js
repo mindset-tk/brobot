@@ -57,11 +57,12 @@ client.login(config.authtoken);
 
 // command parser
 client.on('message', message => {
+  const msgguildid = message.guild.id;
   if (message.type == 'PINS_ADD') {
     message.delete();
     return;
   }
-  if (!message.content.startsWith(config.prefix) || message.author.bot || !message.member.roles.cache.has(config.roleBros)) return;
+  if (!message.content.startsWith(config.prefix) || message.author.bot || !message.member.roles.cache.has(config[msgguildid].roleUser)) return;
 
   const args = message.content.slice(config.prefix.length).split(/ +/);
   const commandName = args.shift().toLowerCase();
@@ -73,6 +74,10 @@ client.on('message', message => {
   // check if command is server only; prevent it from being run in DMs if so.
   if (command.guildOnly && message.channel.type !== 'text') {
     return message.reply('I can\'t execute that command inside DMs!');
+  }
+
+  if (command.guildLimit && !command.guildLimit.includes(msgguildid)) {
+    return;
   }
 
   // check if command requires arguments
@@ -105,7 +110,7 @@ client.on('message', message => {
 
   // Try to execute the command and return an error if it fails.
   try {
-    command.execute(message, args, client);
+    command.execute(message, args, client, msgguildid);
   }
   catch (error) {
     console.error(error);
@@ -116,7 +121,7 @@ client.on('message', message => {
 
 // reads channel updates and reports topic change to channel
 client.on('channelUpdate', async (oldChannel, newChannel) => {
-  const server = client.guilds.cache.get(config.serverID);
+  const server = client.guilds.cache.get(oldChannel.guild.id);
   const channelupdateentry = await server.fetchAuditLogs().then(audit => audit.entries.first());
   if (oldChannel.topic != newChannel.topic) {
     newChannel.send(`${channelupdateentry.executor} has changed the topic to: \n *${newChannel.topic}*`);

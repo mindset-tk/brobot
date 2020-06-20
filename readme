@@ -20,7 +20,6 @@ To use:
     -RoleAdmin is the ID for the administrator role for your server.
     -RoleBro is the "Bro" role. In my server it's what at-large users have been given, but you could perhaps repurpose it to be a mod role.
     -channelAnnouncements is the announcements channel. Any use of the !admin command will ping @everyone via this channel.
-    -channelBotTest is the channel used for bot testing. At the moment it's not called by anything and may be left blank; As the name suggests it's used for testing purposes.
 
 2. run bot.js (typically, 'node bot.js' will be enough)
 

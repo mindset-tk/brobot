@@ -2,23 +2,25 @@ const path = require('path');
 const configPath = path.resolve('./config.json');
 const config = require(configPath);
 
+
 module.exports = {
   name: 'bro',
   description: 'Elevates other users to bro status',
   args: true,
   usage: '<@user>',
   guildOnly: true,
-  execute(message) {
+  guildLimit: ['598939818600300550'],
+  execute(message, args, client, msgguildid) {
     if (message.mentions.members.first()) {
       const target = message.mentions.members.first();
-      if (message.member.roles.cache.has(config.roleBros) && !target.roles.has(config.roleBros) && target.user.id !== config.botID) {
+      if (message.member.roles.cache.has(config[msgguildid].roleUser) && !target.roles.has(config[msgguildid].roleUser) && !target.bot) {
         message.channel.send('Elevating ' + target + ' to Bro');
-        target.addRole(config.roleBros);
+        target.addRole(config[msgguildid].roleUser);
       }
-      else if (target.user.id == config.botID) {
+      else if (target.bot) {
         message.channel.send('The Bros role is not used for bots!');
       }
-      else if (target.roles.has(config.roleBros)) {
+      else if (target.roles.has(config[msgguildid].roleUser)) {
         message.channel.send(target + ' is already a member of the Bros role!');
       }
       else {

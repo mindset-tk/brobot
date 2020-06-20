@@ -1,4 +1,7 @@
-/* module.exports = {
+/*
+
+module.exports = {
+
 	name: 'prune',
 	description: 'clear messages from chat',
 	cooldown: 5,
