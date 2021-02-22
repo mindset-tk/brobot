@@ -81,7 +81,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
               highWaterMark: 1024 * 1024 * 32,
             }),
             // set the discord.js highWaterMark to 1; it's not needed versus ytdl's and seems to cause some issues.
-            { highWaterMark: 1 })
+            { highWaterMark: 1024 * 1024 * 32 })
           .on('start', () => {
             message.guild.musicData.songDispatcher = dispatcher;
             message.guild.musicData.songDispatcher.pausedTime = null;
@@ -90,7 +90,9 @@ If the bot is the only user in a voice channel when it finishes playback of the 
               .setThumbnail(queue[0].thumbnail)
               .setColor('#e9f931')
               .addField('Now Playing:', queue[0].title)
-              .addField('Duration:', queue[0].duration);
+              .addField('Duration:', queue[0].duration)
+              .addField('Added by:', queue[0].addedBy)
+              .addField('Link:', queue[0].url);
             // also display next song title, if there is one in queue
             if (queue[1]) videoEmbed.addField('Next Song:', queue[1].title);
             message.guild.musicData.voiceTextChannel.send(videoEmbed);
@@ -125,7 +127,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
             }
           })
           .on('error', e => {
-            message.guild.musicData.voiceTextChannel.send(`Error playing ${message.guild.musicData.nowPlaying.title}. See console log for details. Skipping to next song...`);
+            message.guild.musicData.voiceTextChannel.send('Error playing a song. See console log for details. Skipping to next song...');
             console.error('Youtube playback error! Error Details: ', e);
             if (message.guild.musicData.nowPlaying) console.error('Song playing at time of error: ', message.guild.musicData.nowPlaying);
             if (queue[0]) console.error('Video at top of queue: ', queue[0]);
@@ -159,6 +161,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
         const video = await videosObj[i].fetch();
         const url = video.url;
         const title = video.raw.snippet.title;
+        const addedBy = message.member.nickname ? message.member.nickname : message.author.username;
         let duration = formatDuration(video.duration);
         const thumbnail = video.thumbnails.high.url;
         if (duration == '00:00') duration = 'Live Stream';
@@ -167,7 +170,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
           title,
           duration,
           thumbnail,
-          voiceChannel,
+          addedBy,
         };
         message.guild.musicData.queue.push(song);
       }
@@ -191,6 +194,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
       const video = await YT.getVideoByID(query.match(isVideo)[1]);
       const url = video.url;
       const title = video.title;
+      const addedBy = message.member.nickname ? message.member.nickname : message.author.username;
       let duration = formatDuration(video.duration);
       const thumbnail = video.thumbnails.high.url;
       if (duration == '00:00') duration = 'Live Stream';
@@ -199,6 +203,7 @@ If the bot is the only user in a voice channel when it finishes playback of the 
         title,
         duration,
         thumbnail,
+        addedBy,
       };
       // push the song into the queue.
       message.guild.musicData.queue.push(song);
