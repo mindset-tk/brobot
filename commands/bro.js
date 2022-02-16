@@ -13,9 +13,9 @@ module.exports = {
   execute(message, args, client, msgguildid) {
     if (message.mentions.members.first()) {
       const target = message.mentions.members.first();
-      if (message.member.roles.cache.has(config[msgguildid].roleUser) && !target.roles.has(config[msgguildid].roleUser) && !target.bot) {
+      if (message.member.roles.cache.has(config[msgguildid].roleUser) && !target.roles.cache.has(config[msgguildid].roleUser) && !target.bot) {
         message.channel.send('Elevating ' + target + ' to Bro');
-        target.addRole(config[msgguildid].roleUser);
+        target.roles.add(config[msgguildid].roleUser);
       }
       else if (target.bot) {
         message.channel.send('The Bros role is not used for bots!');
