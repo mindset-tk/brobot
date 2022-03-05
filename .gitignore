@@ -3,6 +3,7 @@
 pm2.json
 apitokens.json
 votes.json
+events.json
 *CSV*
 .editorconfig
 *.xlsx
