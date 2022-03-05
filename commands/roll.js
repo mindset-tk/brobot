@@ -1,13 +1,37 @@
-const path = require('path');
-const configPath = path.resolve('./config.json');
-const config = require(configPath);
+// function to roll x dice with y sides
+function rollDice(dice, sides) {
+  const arr = [];
+  for (let i = 0; i < dice; i++) {
+    arr.push(Math.floor(Math.random() * sides + 1));
+  }
+  // sort ascending
+  arr.sort((a, b) => a - b);
+  return arr;
+}
 
+// func to convert to standard dnotation
+function convertToD(dice, sides, mod) {
+  let convertedString = `${dice}d${sides}`;
+  if (mod != 0) {
+    if (mod > 0) {convertedString = `${convertedString}+${mod}`;}
+    if (mod < 0) {convertedString = `${convertedString}${mod}`;}
+  }
+  return convertedString;
+}
+
+async function getnickname(message) {
+  const user = await message.client.users.fetch(message.author.id);
+  const guild = message.guild;
+  const guildmember = await guild.members.fetch(user);
+  return guildmember.displayName;
+}
 
 module.exports = {
   name: 'roll',
-  description: 'Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.',
+  description() {return 'Roll dice. You can roll multiple sets of dice by separating them with a space. Decimal numbers, negative numbers, 0, and numbers larger than 1000 are not accepted.';},
   cooldown: 1,
-  usage: `#d#±# (ex. 2d6+1) for standard usage. You may drop the #dice to only roll 1 (ex. d6+1 will roll 1d6+1)
+  usage(config) {
+    return `#d#±# (ex. 2d6+1) for standard usage. You may drop the #dice to only roll 1 (ex. d6+1 will roll 1d6+1)
 *${config.prefix}roll 1d#±#a* to roll 2 dice with advantage (ex. 1d20a, d20a, d20+1a are all valid)
 *${config.prefix}roll 1d#±#d* to roll 2 dice with disadvantage (ex. 1d20d, d20d, d20+1d are all valid)
 *Note: advantage and disadvantage must be with a single die; they will not run with more than 1 die.*
@@ -18,8 +42,9 @@ Replace kh above with the following options:
 kh# - keep highest #
 kl# - keep lowest #
 dh# - drop highest #
-dl# - drop lowest #`,
-  async execute(message, args, client) {
+dl# - drop lowest #`;
+  },
+  async execute(message, args) {
     // Regex to test input against.
     // Regex groups: 1 is numdice, 2 is sides, 3 is +/-, 4 is bonus, 5 is the addendum in full (kh1/dl1/a/d etc)
     const diceRegex = new RegExp(/([0-9]+)d([0-9]+)([+-])?([0-9]+)?(.+)?/);
@@ -31,34 +56,8 @@ dl# - drop lowest #`,
     // check for too many args
     else if (args.length > 10) { return message.channel.send('The maximum number of separate rolls at one time is 10.'); }
 
-    // function to roll x dice with y sides
-    function rollDice(dice, sides) {
-      const arr = [];
-      for (let i = 0; i < dice; i++) {
-        arr.push(Math.floor(Math.random() * sides + 1));
-      }
-      // sort ascending
-      arr.sort((a, b) => a - b);
-      return arr;
-    }
 
-    // func to convert to standard dnotation
-    function convertToD(dice, sides, mod) {
-      let convertedString = `${dice}d${sides}`;
-      if (mod != 0) {
-        if (mod > 0) {convertedString = `${convertedString}+${mod}`;}
-        if (mod < 0) {convertedString = `${convertedString}${mod}`;}
-      }
-      return convertedString;
-    }
-
-    async function getnickname() {
-      const user = client.users.cache.get(message.author.id);
-      const guild = message.guild;
-      const guildmember = guild.member(user);
-      return guildmember.nickname;
-    }
-    const nickname = await getnickname();
+    const nickname = await getnickname(message);
 
     if (args.length > 10) { return message.channel.send('Too many separate rolls. Please make no more than 10 individual rolls at a time.'); }
 

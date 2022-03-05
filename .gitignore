@@ -1,4 +1,14 @@
-config.json
 .eslintrc.json
 /node_modules/*
-Brobot.code-workspace
+pm2.json
+apitokens.json
+votes.json
+events.json
+*CSV*
+.editorconfig
+*.xlsx
+/db/*
+/.idea/*
+/.vscode/*
+commands/testcommand.js
+/unused/*
