@@ -1,7 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const configPath = path.resolve('./config.json');
-const config = require(configPath);
+/* TODO: rewrite for multi-server functionality if possible? Rich presence is not per-server, so this may not be something we want modifiable.
+ const { getConfig } = require('../extras/common.js');
+// let config;
 
 
 module.exports = {
@@ -13,8 +12,10 @@ module.exports = {
   usage: '[#channel(optional)] [activity type (optional)] [activity]',
   cooldown: 3,
   guildOnly: true,
+  staffOnly: true,
   args: true,
   execute(message, args, client) {
+    const config = getConfig(message.client, message.guild.id);
     let targetChannel = message.channel;
     const channelMatch = args[0].match(/^<#(\d+)>$/);
     if (channelMatch) {
@@ -34,9 +35,6 @@ module.exports = {
     if (config.currentActivity.Type === 'LISTENING') {targetChannel.send ('I just started listening to **' + config.currentActivity.Name + '**. You should try it!');}
     else {targetChannel.send ('I just started ' + config.currentActivity.Type.toLowerCase() + ' **' + config.currentActivity.Name + '**. You should try it!');}
     message.delete();
-    fs.writeFile(configPath, JSON.stringify(config, null, 2), function(err) {
-      if (err) return console.log(err);
-    });
     return;
   },
-};
+}; */

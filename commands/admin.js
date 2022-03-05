@@ -1,27 +1,26 @@
-const path = require('path');
-const configPath = path.resolve('./config.json');
-const config = require(configPath);
-
+const { getConfig } = require('../extras/common.js');
 
 module.exports = {
   name: 'admin',
-  description: 'Toggle admin status on sender. Only works if sender has the Bros role.',
+  aliases: [],
+  description() { return 'Toggle admin powers. Will not work if admin role is not configured in config. Announces with an @everyone ping to the announcements channel.';},
+  cooldown: 3,
   guildOnly: true,
-  guildLimit: ['598939818600300550'],
-  execute(message, args, client, msgguildid) {
-    const announcements = client.channels.cache.get(config[msgguildid].channelAnnouncements);
-    if (message.member.roles.cache.has(config[msgguildid].roleUser) && !message.member.roles.cache.has(config[msgguildid].roleAdmin)) {
-      message.channel.send('Elevating you to Admin');
-      announcements.send('@everyone : ' + message.author.displayName + ' has escalated to admin!');
-      message.member.roles.add(config[msgguildid].roleAdmin);
+  staffOnly: true,
+  execute(message) {
+    const config = getConfig(message.client, message.guild.id);
+    const client = message.client;
+    const announcements = client.channels.cache.get(config.channelAnnouncements);
+    if (!config.roleAdmin) { return; }
+    if (!message.member.roles.cache.has(config.roleAdmin)) {
+      message.channel.send('Elevating you to Admin.');
+      if (announcements) { announcements.send('@everyone : ' + message.author.displayName + ' has escalated to admin!'); }
+      message.member.roles.add(config.roleAdmin);
     }
-    else if (message.member.roles.cache.has(config[msgguildid].roleUser) && message.member.roles.cache.has(config[msgguildid].roleAdmin)) {
-      message.channel.send('De-elevating you from Admin');
-      announcements.send('@everyone : ' + message.author.displayName + ' has de-escalated from admin!');
-      message.member.roles.remove(config[msgguildid].roleAdmin);
-    }
-    else {
-      message.channel.send ('You do not have rights to do that!');
+    else if (message.member.roles.cache.has(config.roleAdmin)) {
+      message.channel.send('De-elevating you from Admin.');
+      if (announcements) { announcements.send('@everyone : ' + message.author.displayName + ' has de-escalated from admin!'); }
+      message.member.roles.remove(config.roleAdmin);
     }
   },
 };
