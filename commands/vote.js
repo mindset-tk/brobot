@@ -318,7 +318,7 @@ module.exports = {
     });
     if (!result) {return;}
     await dmChannel.send(`Does this look OK?\nVote text: ${voteData.summary}\n Duration: ${humanReadableDuration}\n Emoji: ${voteData.emoji}`);
-    await promptYesNo(dmChannel, {
+    result = await promptYesNo(dmChannel, {
       messages: {
         yes: 'OK, your vote is now posted.',
         no: 'OK, please run the command again to post a vote (looping not yet implemented).',
@@ -327,6 +327,7 @@ module.exports = {
         invalid: 'Reply not recognized! Please answer Y or N.',
       },
     });
+    if (!result || !result.answer) {return false;}
     voteData.channel = message.channel.id;
     voteData.creator = message.author.id;
     voteData.guild = message.guild.id;

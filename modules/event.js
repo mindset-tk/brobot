@@ -1,6 +1,6 @@
 // TODO:
 // * convert to config DB instead of config.json
-// * convert to multi-server?
+// * convert to multi-server/DB instead of events.json
 // * join events by reacts
 // * choose which channel to use in DM
 // * recurring events

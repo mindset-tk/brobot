@@ -67,6 +67,7 @@ const cooldowns = new Discord.Collection();
 
 // initiate the sql db with various bot data
 // then initiate commands and modules
+// TODO: clear out any servers the bot has exited from when initializing DBs
 let botdb;
 (async () => {
   try {
@@ -81,6 +82,7 @@ let botdb;
       botdb = value;
     });
     // prepTables preps any new config related tables.
+    // cannot be used via init() as it sets up values that init processes will need.
     await prepTables(client, botdb);
     const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
     for (const file of commandFiles) {
@@ -211,6 +213,7 @@ client.on('messageCreate', async message => {
   if (message.channel instanceof Discord.DMChannel) return;
   const config = getConfig(client, message.guild.id);
   // skip all handling for counting messages that successfully increment a count.
+  // TODO fix counting
   /* if(counting.HandleMessage(message)) {
     return;
   } */

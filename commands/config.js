@@ -4,6 +4,9 @@
 // channel and role are a single ID for their respective type and are stored as strings.
 // channelArray is an array of channelIDs.
 // inviteCodesArray is an array of known invite codes that have been given descriptors.
+// TODO: add functionality to set role selection and move role selection channel on change of channelRoleSelection.
+// TODO: finish cleaning up unused props, etc.
+// TODO: refactor to use embed + reaction buttons etc
 const { Collection } = require('discord.js');
 const { writeConfigTables, getConfig } = require('../extras/common.js');
 
@@ -33,7 +36,8 @@ const configurableProps = [{ varName:'prefix', description:'Command Prefix', var
   { varName:'starThreshold', description:'Number of stars to starboard a message', varType:'integer', default: '' },
   { varName:'starboardIgnoreChannels', description:'Channel(s) to ignore for starboarding', varType:'channelArray', default: [] },
   { varName:'starboardPrivateChannels', description:'Channel(s) to consider private for starboarding purposes', varType:'channelArray', default: [] },
-  { varName:'channelAnnouncements', description: 'Channel for making important announcements', varType:'channel', default: '' }];
+  { varName:'channelAnnouncements', description: 'Channel for making important announcements', varType:'channel', default: '' },
+];
 
 async function prepTables(client, botdb) {
   client.guildConfig = new Collection();
@@ -75,8 +79,9 @@ async function prepTables(client, botdb) {
     propArr = [];
     for (const prop of configurableProps) {
       sqlStatement += '(?, ?, ?),';
-      propArr.push(guild[1].id, prop.varName, prop.default);
+      propArr.push(guild[1].id, prop.varName, JSON.stringify(prop.default));
     }
+    // slice the last comma off the sql statement and make it a semicolon
     sqlStatement = sqlStatement.slice(0, -1) + ';';
     await botdb.run(sqlStatement, ...propArr);
     // refresh what the SQL db shows... might be a better way of doing this but it's just a select and no joins
@@ -90,7 +95,7 @@ async function prepTables(client, botdb) {
       }
       // and assemble the config object for this guild iteravely.
       else {
-        configObj[d.item] = d.value;
+        configObj[d.item] = JSON.parse(d.value);
       }
     }
     // finally, add the guild to the client.guildConfig collection for later use, so we aren't doing going back to the db every time.

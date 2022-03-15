@@ -11,8 +11,8 @@ async function writeConfigTables(botdb, client, guildId = null) {
     const configArr = [];
     for (const [key, value] of Object.entries(configToWrite)) {
       configArr.push(botdb.run(`UPDATE config
-      SET value = ?
-      WHERE item = ?;`, value, key));
+        SET value = ?
+        WHERE item = ?;`, JSON.stringify(value), key));
     }
     await Promise.all(configArr);
   }
@@ -86,16 +86,17 @@ async function dmCollector(dmChannel) {
  * @returns {Promise<object|boolean>} Returns the result from the handler or `false` if aborted.
  ` */
 async function promptForMessage(dmChannel, handler) {
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const reply = await dmCollector(dmChannel);
     if (!reply) {
       return false;
     }
     const result = await handler(reply);
-    if (result === 'retry') {
+    if (result.toLowerCase() === 'retry') {
       continue;
     }
-    else if (result === 'abort') {
+    else if (result.toLowerCase() === 'abort') {
       return false;
     }
     else {
