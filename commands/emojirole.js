@@ -4,10 +4,12 @@
 // https://github.com/Sciman101/JNFR/blob/master/commands/emojirole.js
 // TODO: cleanup/garbage collect to remove orphaned emoji from role_menu_emoji.  Shouldn't happen often; Maybe only do it at init?
 // note to self: use outer join for cleanup tool.
+// TODO: add function to move a post to a new channel.
 const { MessageEmbed } = require('discord.js');
 const emojiRegex = require('emoji-regex');
 const unicodeEmojiTest = emojiRegex();
 const discordEmojiTest = new RegExp(/<a?:.+?:(\d+)>$/);
+const { getConfig } = require('../extras/common.js');
 
 async function prepTables(botdb) {
   // debug stuff
@@ -16,17 +18,25 @@ async function prepTables(botdb) {
   // generate tables if needed.
   await botdb.run('CREATE TABLE IF NOT EXISTS role_menu_messages (message_id text NOT NULL UNIQUE, guild_id text NOT NULL, channel_id text NOT NULL, label text NOT NULL, header text, footer text, active integer, PRIMARY KEY(message_id) UNIQUE(guild_id, label)) ');
   await botdb.run('CREATE TABLE IF NOT EXISTS role_menu_emoji (message_id text NOT NULL, role_id text NOT NULL, emoji text, name text, UNIQUE(message_id, role_id), UNIQUE(message_id, emoji))');
+  // delete orphaned role_emoji
+  await botdb.run('DELETE FROM role_menu_emoji WHERE (message_id, emoji) IN (SELECT role_menu_emoji.message_id, emoji FROM role_menu_emoji LEFT JOIN role_menu_messages ON role_menu_emoji.message_id = role_menu_messages.message_id WHERE role_menu_messages.message_id IS NULL)');
 }
 
 module.exports = {
   name: 'emojirole',
-  aliases: [],
   cooldown: 1,
-  description() {'Setup reaction-based roles for your server.';},
+  description() {return 'Setup reaction-based roles for your server.';},
   args:true,
-  // permissions:['MANAGE_MESSAGES'], does nothing currently
-  // TODO usage info is wrong
-  usage() {return '<add|remove|header|footer|newpost|activate> <post label> <emoji> [role (only required when adding/removing)]';},
+  usage(config) {
+    return `<newpost add|remove|header|footer|activate|deactivate|deletepost|list> <label> <options (see below)>.
+**Important: post labels may not contain spaces!**
+*${config.prefix}${module.exports.name} newpost <post label> <channel mention or ID>* - create a new emoji post with the given parameters, but don't post it yet. It can be posted with the activate subcommand.
+*${config.prefix}${module.exports.name} <add|remove> <post label> <emoji> <@role mention or ID(not required for remove)>* - add or remove a role from a role post. Can be done if active or inactive.
+*${config.prefix}${module.exports.name} <header|footer> <text>* - add a header or footer to a role post.
+*${config.prefix}${module.exports.name} <activate|deactivate> <post label>* - activate a role post by posting it to its assigned channel.
+*${config.prefix}${module.exports.name} deletepost <post label>* - delete a role post from memory.  Can only be used on deactivated posts.
+*${config.prefix}${module.exports.name} list <up to 5 post labels separated by a space (optional)>* - If used without labels, lists all role posts for this server. If used with label(s), lists the role options for the listed posts`;
+  },
   guildOnly:true,
   staffOnly:true,
   async execute(message, args, botdb) {
@@ -41,8 +51,6 @@ module.exports = {
     if (!guild.available) {
       return;
     }
-    // TODO: create remove functionality
-    // TODO: create list to list labels for this server and their active status
     switch(action.toLowerCase()) {
     case 'add':
       return await addRoleToPost(message, args, botdb);
@@ -60,6 +68,8 @@ module.exports = {
       return await deactivateRolePost(message, args, botdb);
     case 'delete':
       return await deleteRolePost(message, args, botdb);
+    case 'list':
+      return await listRolePosts(message, args, botdb);
     default:
       return message.reply('Unknown action ' + action);
     }
@@ -67,7 +77,6 @@ module.exports = {
   async init(client, botdb) {
     await prepTables(botdb);
     // Now the important part: The listener
-    // TODO: add routine that removes invalid emoji from a post (eg, if a user adds an invalid emoji)
     client.on('messageReactionAdd', async (reaction, user) => {
       // return if reaction was done by a bot, or if the message is not in the rolemenu db
       if (user.bot) return;
@@ -224,7 +233,6 @@ async function getPostbyLabel(message, label, botdb) {
 
 /**
 * Test if input is a unicode or Discord emoji mention, and if it can be posted by the bot (eg, is not animated or from a different server.)
-* TODO: apparently discord bots can now use animated emoji.
 * @param message Discord message object
 * @param emoji string to test
 *
@@ -252,9 +260,8 @@ async function validateEmoji(message, emoji) {
 /**
 * Search db for emoji with a post id.
 * @param messageId message id of post
-* @param emoji emoji to search for in db; if null
+* @param emoji emoji to search for in db; if null this returns an array of all emoji items on the post.
 * @param botdb bot database
-* TODO? if emoji is null returns array of all emoji on post, or es6 map?
 *
 * @returns emoji object {message_id, role_id, emoji} or array of all emoji objects on message.
 */
@@ -265,7 +272,6 @@ async function getPostEmoji(messageId, emoji, botdb) {
 
 /**
 * If a post exists and is set to active, attempts to edit the post and update it.
-* TODO: If this can't be done, reposts the message and updates message ids in db.
 * @param message message object of command
 * @param post post object generated by getPostbyLabel()
 * @param botdb bot database
@@ -280,20 +286,6 @@ async function updatePost(message, post, botdb, exMsg = false) {
   if (!postMsg) {
     try {
       postMsg = await postChannel.messages.fetch(post.message_id);
-      await postMsg.edit({ embeds: [embedData] });
-      await getPostEmoji(postMsg.id, null, botdb).then(async arr => {
-        const emojiIdArr = [];
-        arr.forEach(async e => {
-          await postMsg.react(e.emoji);
-          emojiIdArr.push(discordEmojiTest.exec(e.emoji)[1]);
-        });
-        // remove any extraneous reactions
-        postMsg.reactions.cache.forEach(async (value, key) => {
-          if(!emojiIdArr.includes(key)) {
-            await postMsg.reactions.resolveId(key).then(r => r.remove());
-          }
-        });
-      });
     }
     catch (err) {
       if (err.message == 'Unknown Message') {
@@ -307,6 +299,27 @@ async function updatePost(message, post, botdb, exMsg = false) {
         return;
       }
     }
+  }
+  try {
+    await postMsg.edit({ embeds: [embedData] });
+    await getPostEmoji(postMsg.id, null, botdb).then(async arr => {
+      const emojiIdArr = [];
+      arr.forEach(async e => {
+        await postMsg.react(e.emoji);
+        emojiIdArr.push(discordEmojiTest.exec(e.emoji)[1]);
+      });
+      // remove any extraneous reactions
+      postMsg.reactions.cache.forEach(async (value, key) => {
+        if(!emojiIdArr.includes(key)) {
+          await postMsg.reactions.resolveId(key).then(r => r.remove());
+        }
+      });
+    });
+  }
+  catch (err) {
+    console.err(err);
+    message.reply('Error updating role post! see log for details.');
+    return;
   }
 }
 
@@ -343,7 +356,6 @@ async function makeRolePost(message, post, botdb) {
 async function generateEmbed(post, botdb) {
   const newEmbed = new MessageEmbed()
     .setTitle(post.header || post.label)
-    // .setDescription('React to give yourself a role.')
     .setFooter({ text: ((post.footer || '') + ' Label:' + post.label) });
   let fieldContents = '';
   await getPostEmoji(post.message_id, null, botdb).then(arr => {
@@ -366,19 +378,20 @@ async function generateEmbed(post, botdb) {
 * @returns message to channel stating success/failure.
 */
 async function newRolePost(message, args, botdb) {
-  const channel = await parseChannel(args.shift(), message);
-  if(!channel || channel.type != 'GUILD_TEXT') {
-    return;
-  }
-  const label = args.shift();
 
+  const label = args.shift();
   if(!label) {
     return message.reply('Expected a label for the post');
   }
 
-  const overflow = args.shift();
-  if(overflow) {
-    return message.reply('Too many parameters, ' + overflow + ' and everything past it is too much');
+  const channel = await parseChannel(args.shift(), message);
+  if(!channel || channel.type != 'GUILD_TEXT') {
+    return;
+  }
+  // we don't care if the last item is a role, but if it's anything else, it's overflow.
+  if (await parseRole(args[0], message)) {args.shift();}
+  if(args.length > 0) {
+    return message.reply('Too many parameters! \'' + args[0] + '\' and everything past it is not useable.');
   }
 
   const existPost = await getPostbyLabel(message, label, botdb);
@@ -427,7 +440,6 @@ async function addRoleToPost(message, args, botdb) {
   if(!cleanEmoji) {
     return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from this server (cross-server emoji cannot be used by bots.)`);
   }
-  else {message.reply(emoji);}
 
   // get role data
   const role = await parseRole(args.shift(), message);
@@ -638,7 +650,51 @@ async function deleteRolePost(message, args, botdb) {
     return message.reply(`Post with label '${label}' deleted from storage. If you want to repost it you will need to recreate the post from scratch.`);
   }
   catch(err) {
-    // TODO err handling here
+    message.reply('Something went wrong deleting the post from storage! Please see logs for details.');
     console.error(err);
   }
+}
+
+async function listRolePosts(message, args, botdb) {
+  const config = getConfig(message.client, message.guild.id);
+  let msgString = new String;
+  if (!args || args.length == 0) {
+    msgString = `Here are the role posts for ${message.guild.name}:`;
+    const postArr = await botdb.all('SELECT * FROM role_menu_messages WHERE guild_id = ?', message.guild.id);
+    if (postArr) {
+      await Promise.all(postArr.map(async p => {
+        const channel = await message.guild.channels.fetch(p.channel_id);
+        msgString += `\n**${p.label}** in ${channel} - ${p.active ? 'Active' : 'Inactive'}`;
+      }));
+      msgString += `\nTo see details on an individual message, use ${config.prefix}${exports.name} list <up to 5 labels separated by space>.`;
+    }
+    else { msgString = 'There are no active or inactive emojirole posts in this server!';}
+  }
+  else if (args.length <= 5) {
+    msgString = 'Here is the list of emoji and roles for each label you requested:';
+    let notFound = 0;
+    await Promise.all(args.map(async l => {
+      const post = await botdb.get('SELECT * FROM role_menu_messages WHERE label = ? AND guild_id = ?', l, message.guild.id);
+      if (!post) {
+        notFound++;
+        msgString += `\nCould not find label ${l}`;
+      }
+      else {
+        msgString += `\n**${l}:** (Active? ${post.active ? 'Yes' : 'No'})`;
+        const emojiArr = await botdb.all('SELECT * FROM role_menu_emoji WHERE message_id =?', post.message_id);
+        if(emojiArr.length > 0) {
+          emojiArr.forEach(e => {
+            msgString += `\n ${e.emoji} - ${e.name}`;
+          });
+        }
+        else { msgString += '\nNo roles set up for this label.'; }
+      }
+    }));
+    if (notFound == args.length && args.length > 1) { msgString = `Couldn't find role posts for any of the labels you requested on this server. try running *${config.prefix}${module.exports.name} list* to display all post labels for this server.`;}
+    else if (notFound == args.length && args.length == 1) { msgString = `Couldn't find a role post with the label ${args[0]}`;}
+  }
+  else if (args.length > 5) {
+    msgString = 'Too many labels requested! please limit request to 5 or less at a time.';
+  }
+  message.reply(msgString);
 }
