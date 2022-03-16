@@ -8,7 +8,7 @@ module.exports = {
   aliases: ['yt'],
   description() {return 'Searches youtube and links the first result. If you use a video id it will link directly to the video.';},
   cooldown: 5,
-  usage: '[search query]',
+  usage() {return '[search query]';},
   execute(message, args) {
     async function vidsearch() {
       if (!args.length) {

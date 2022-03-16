@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-
+/* const { SlashCommandBuilder } = require('@discordjs/builders');
+// currently does nothing.
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('event')
@@ -15,8 +15,8 @@ module.exports = {
     .addSubcommand(subcommand =>
       subcommand
         .setName('cancel')
-        .setDescription('cancel an event'))
-  , async execute(interaction) {
+        .setDescription('cancel an event')),
+  async execute(interaction) {
     await interaction.reply('Pong!');
   },
-};
+}; */

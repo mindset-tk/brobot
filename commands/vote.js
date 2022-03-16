@@ -256,8 +256,8 @@ function getActiveVoteMessages(guildId) {
 
 module.exports = {
   name: 'vote',
-  description: 'generates a message that can be voted on with reactions.',
-  usage: '',
+  description() { return 'generates a message that can be voted on with reactions.';},
+  usage() { return '';},
   aliases: 'poll',
   cooldown: 3,
   guildOnly: true,
