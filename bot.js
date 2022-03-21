@@ -203,7 +203,7 @@ client.on('interactionCreate', async interaction => {
   const command = client.slashCommands.get(interaction.commandName);
   if (!command) return;
   try {
-    await command.execute(interaction);
+    await command.execute(interaction, botdb);
   }
   catch (error) {
     console.error(error);
