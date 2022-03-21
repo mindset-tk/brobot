@@ -86,17 +86,16 @@ async function dmCollector(dmChannel) {
  * @returns {Promise<object|boolean>} Returns the result from the handler or `false` if aborted.
  ` */
 async function promptForMessage(dmChannel, handler) {
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const reply = await dmCollector(dmChannel);
     if (!reply) {
       return false;
     }
     const result = await handler(reply);
-    if (result.toLowerCase() === 'retry') {
+    if (result === 'retry') {
       continue;
     }
-    else if (result.toLowerCase() === 'abort') {
+    else if (result === 'abort') {
       return false;
     }
     else {
@@ -192,6 +191,19 @@ async function pkQuery(message, force = false) {
   return message.PKData;
 }
 
+/**
+* Convenience function for checking if a channel is a valid guild text channel.
+*
+* @param channel {Discord.Channel} The channel to check.
+* @returns {boolean} Returns true if the channel is a guild text channel, false if not.
+*/
+function isTextChannel(channel) {
+  if (channel.type == 'GUILD_TEXT' || channel.type == 'GUILD_PUBLIC_THREAD' || channel.type == 'GUILD_PRIVATE_THREAD') {
+    return true;
+  }
+  return false;
+}
+
 module.exports = {
   getPermLevel,
   dmCollector,
@@ -200,4 +212,5 @@ module.exports = {
   pkQuery,
   getConfig,
   writeConfigTables,
+  isTextChannel,
 };

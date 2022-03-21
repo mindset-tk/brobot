@@ -5,7 +5,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const voteDataPath = path.resolve('./votes.json');
-const { promptForMessage, promptYesNo, getConfig } = require('../extras/common.js');
+const { promptForMessage, promptYesNo, getConfig, isTextChannel } = require('../extras/common.js');
 
 async function writeVoteState() {
   return fsp.writeFile(
@@ -224,19 +224,14 @@ class VoteManager {
  */
   getResults(vote) {
     const voteCounts = new Map();
+    // initialize VoteCounts at 0 for every emoji in the list.
+    const filteredEmoji = vote.emoji.filter(e => {return e !== '🚫';});
+    filteredEmoji.forEach(voteEmoji => { voteCounts.set(voteEmoji, 0);});
     if (vote.votes && vote.votes.size > 0) {
       for (const voteEntry of vote.votes.values()) {
-        if (!voteCounts.has(voteEntry)) {
-          voteCounts.set(voteEntry, 1);
-        }
-        else if (voteCounts.has(voteEntry)) {
-          voteCounts.set(voteEntry, voteCounts.get(voteEntry) + 1);
-        }
+        voteCounts.set(voteEntry, voteCounts.get(voteEntry) + 1);
       }
     }
-    // filter out the abstain emoji since we simply do not count those.
-    const filteredEmoji = vote.emoji.filter(e => {return e !== '🚫';});
-    filteredEmoji.forEach(voteEmoji => { voteCounts.has(voteEmoji) ? true : voteCounts.set(voteEmoji, 0);});
     return voteCounts;
   }
 
@@ -338,7 +333,7 @@ module.exports = {
     voteData.votes = new Map();
     voteManager.add(voteData);
   },
-  init(client) {
+  async init(client) {
     const onReady = () => {
       voteManager = new VoteManager(client);
       voteManager.loadState().then(() => {
@@ -352,21 +347,29 @@ module.exports = {
     else {
       onReady();
     }
-    client.on('raw', async (packet) => {
+    client.on('messageReactionAdd', async (reaction, user) => {
       // return if the event isn't a reaction add, or if it was a bot reaction.
-      if (packet.t !== 'MESSAGE_REACTION_ADD' || packet.d.user_id == client.user.id) {
-        return;
+      if (user.bot) { return; }
+      if (reaction.partial) {
+        // If the message this reaction belongs to was removed, the fetching might result in an API error which should be handled
+        try {
+          await reaction.fetch();
+        }
+        catch (error) {
+          console.error('Something went wrong when fetching the message:', error);
+          // Return as `reaction.message.author` may be undefined/null
+          return;
+        }
       }
       // then check if the message in question is one of the vote-related messages.
-      else if (!getActiveVoteMessages(packet.d.guild_id).includes(packet.d.message_id)) {
+      if (!isTextChannel(reaction.message.channel)) { return; }
+      else if (!getActiveVoteMessages(reaction.message.guild.id).includes(reaction.message.id)) {
         return;
       }
-      const { d: data } = packet;
-      const user = client.users.cache.get(data.user_id);
-      const channel = client.channels.cache.get(data.channel_id) || await user.createDM();
-      const message = await channel.messages.fetch(data.message_id);
-      data.emoji.id ? message.reactions.resolve(data.emoji.id).users.remove(data.user_id) : message.reactions.resolve(data.emoji.name).users.remove(data.user_id);
-      voteManager.updateVotes(message.guild.id, data.user_id, message.id, data.emoji.name);
+      const channel = client.channels.cache.get(reaction.message.channel.id);
+      const message = await channel.messages.fetch(reaction.message.id);
+      reaction.emoji.id ? await message.reactions.resolve(reaction.emoji.id).users.remove(user.id) : await message.reactions.resolve(reaction.emoji.name).users.remove(user.id);
+      voteManager.updateVotes(message.guild.id, user.id, message.id, reaction.emoji.name);
     });
   },
 };

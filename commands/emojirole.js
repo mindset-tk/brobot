@@ -79,17 +79,15 @@ module.exports = {
     // Now the important part: The listener
     client.on('messageReactionAdd', async (reaction, user) => {
       // return if reaction was done by a bot, or if the message is not in the rolemenu db
-      if (user.bot) return;
+      if (user.bot) { return; }
       if (!(await botdb.get('SELECT * FROM role_menu_messages WHERE message_id = ?', reaction.message.id))) { return; }
       // When a reaction is received, check if the structure is partial
       if (reaction.partial) {
-        // If the message this reaction belongs to was removed, the fetching might result in an API error which should be handled
         try {
           await reaction.fetch();
         }
         catch (error) {
           console.error('Something went wrong when fetching the message: ', error);
-          // Return as `reaction.message.author` may be undefined/null
           return;
         }
       }

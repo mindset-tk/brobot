@@ -1,3 +1,5 @@
+// slash command registrar.
+
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
 const { discordAuthToken } = require('../apitokens.json');

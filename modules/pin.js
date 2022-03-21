@@ -1,27 +1,28 @@
 // needs rewrite for multi-server
-const { getConfig } = require('../extras/common.js');
+// TODO: boolean pinning/unpinning instead of pin counting
+const { getConfig, isTextChannel } = require('../extras/common.js');
 
 exports.init = async function(client) {
-  client.on('raw', async (packet) => {
-    if (packet.t !== 'MESSAGE_REACTION_ADD') {
-      return;
+  client.on('messageReactionAdd', async (reaction) => {
+    if (reaction.partial) {
+      try {
+        await reaction.fetch();
+      }
+      catch (error) {
+        console.error('Something went wrong when fetching the message: ', error);
+        return;
+      }
     }
-    const { d: data } = packet;
-    const user = client.users.cache.get(data.user_id);
-    const channel = client.channels.cache.get(data.channel_id) || await user.createDM();
-
     // fetch info about the message the reaction was added to.
-    const message = await channel.messages.fetch(data.message_id);
-    // custom emojis reactions are keyed in a `name:ID` format, while unicode emojis are keyed by names
-    const emojiKey = (data.emoji.id) ? `${data.emoji.name}:${data.emoji.id}` : data.emoji.name;
-    const reaction = message.reactions.cache.get(emojiKey);
-
+    const message = reaction.message;
     // If the message somehow doesn't have any reactions on it, or the channel type is not a guild text channel (like a DM for example),
     // do not emit a reaction add event.
-    if (!reaction || message.channel.type !== 'GUILD_TEXT') return;
+    if (!reaction || !isTextChannel(message.channel)) return;
+
+    if (message == null || message.system) return;
 
     // then get server-specific config info.
-    const config = getConfig(client, packet.d.guild_id);
+    const config = getConfig(client, message.guild.id);
 
     if (message == null || message.system) return;
     if (reaction.emoji.name == '📌' && reaction.count >= config.pinsToPin && !message.pinned && !config.pinIgnoreChannels.includes(message.channel.id)) {

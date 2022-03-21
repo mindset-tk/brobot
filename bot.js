@@ -15,7 +15,7 @@ const voteDataPath = './votes.json';
 if (fs.existsSync(voteDataPath)) {global.voteData = require(voteDataPath);}
 const moment = require('moment-timezone');
 // const starboard = require('./starboard.js');
-const { getPermLevel, pkQuery, getConfig } = require('./extras/common.js');
+const { getPermLevel, pkQuery, getConfig, isTextChannel } = require('./extras/common.js');
 const { prepTables } = require('./commands/config.js');
 
 
@@ -60,7 +60,7 @@ if (!discordAuthToken || discordAuthToken == '') {
 
 // initialize client, commands, command cooldown collections
 // myIntents.add(Discord.Intents.NON_PRIVILEGED, 'GUILD_MEMBERS');
-const client = new Discord.Client({ intents: myIntents });
+const client = new Discord.Client({ intents: myIntents, partials: ['MESSAGE', 'CHANNEL', 'REACTION'] });
 client.commands = new Discord.Collection();
 client.slashCommands = new Discord.Collection();
 const cooldowns = new Discord.Collection();
@@ -99,6 +99,7 @@ let botdb;
     const modules = fs.readdirSync('./modules').filter(file => file.endsWith('.js'));
     for (const file of modules) {
       const module = require(`./modules/${file}`);
+      // if the module exports have an "execute" func, it's a command; add it to the commands collection.
       if (typeof module.execute === 'function') {
         client.commands.set(module.name, module);
       }
@@ -106,12 +107,15 @@ let botdb;
         await module.init(client, botdb);
       }
     }
+    // slash commands don't need to be stored like standard chat commands.
+    // ./modules/register.js handles registering slash commands with Discord.
+    // but we do need to process the .init segment.
     const slashCommandFiles = fs.readdirSync('./slashcommands').filter(file => file.endsWith('.js'));
     for (const file of slashCommandFiles) {
       const command = require(`./slashcommands/${file}`);
-      // Set a new item in the Collection
-      // With the key as the command name and the value as the exported module
-      client.slashCommands.set(command.data.name, command);
+      if (command.init) {
+        await command.init(client, botdb);
+      }
     }
   }
   catch (error) { console.error(error); }
@@ -222,7 +226,8 @@ client.on('messageCreate', async message => {
   const permLevel = getPermLevel(message);
   // prevent parsing commands without correct prefix, from bots, and from non-staff non-users.
   if (!message.content.startsWith(config.prefix) || (message.author.bot && !message.isPKMessage)) return;
-  if (message.channel.type == 'GUILD_TEXT' && !(permLevel == 'staff' || permLevel == 'user')) return;
+  // ensure the channel is a guild text or guild thread channel.
+  if ((isTextChannel(message.channel)) && !(permLevel == 'staff' || permLevel == 'user')) return;
   const args = message.content.slice(config.prefix.length).split(/ +/);
   let commandName = args.shift().toLowerCase();
 
