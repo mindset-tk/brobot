@@ -3,6 +3,7 @@ const imdb = require('imdb-api');
 const { imdbAPIKey } = require('../apitokens.json');
 const cli = new imdb.Client({ apiKey: imdbAPIKey });
 // TODO convert to embed for output
+// TODO search func
 
 module.exports = {
   name: 'film',
@@ -26,7 +27,7 @@ module.exports = {
           year = args.pop().match(/\((\d*)\)/)[1];
         }
         const imdbObj = await cli.get({ name: args.join(' '), year: year, short_plot: 'short' });
-        console.log(imdbObj);
+        // console.log(imdbObj);
         outputEmbed
           .setTitle(`${imdbObj.title} (${imdbObj.year})`)
           .setURL(imdbObj.imdburl)
