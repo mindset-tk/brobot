@@ -107,12 +107,12 @@ let botdb;
         await module.init(client, botdb);
       }
     }
-    // slash commands don't need to be stored like standard chat commands.
     // ./modules/register.js handles registering slash commands with Discord.
-    // but we do need to process the .init segment.
+    // but we do need to process the .init segment, and add to the list of useable slash commands.
     const slashCommandFiles = fs.readdirSync('./slashcommands').filter(file => file.endsWith('.js'));
     for (const file of slashCommandFiles) {
       const command = require(`./slashcommands/${file}`);
+      client.slashCommands.set(command.data.name, command);
       if (command.init) {
         await command.init(client, botdb);
       }
@@ -305,6 +305,7 @@ client.on('shardError', err => {
 // all other error logging
 client.on('error', err => {console.error(err);});
 
+// tracking origin of guild members when added
 client.on('guildMemberAdd', async member => {
   const config = getConfig(client, member.guild.id);
   if (config.invLogToggle) {
@@ -317,14 +318,14 @@ client.on('guildMemberAdd', async member => {
       .setTimestamp()
       .setFooter('Joined', member.guild.iconURL());
     const logChannel = client.channels.cache.get(config.channelInvLogs);
-    let usedVanityCode = 0;
+    let usedVanityCode = false;
     // if vanity url uses has increased since last user added we can assume this new member used the vanity url.
     if (member.guild.vanityURLCode) {
       await member.guild.fetchVanityData().then(vanityData => {
         if (vanityInvites[member.guild.id] && vanityData.uses > vanityInvites[member.guild.id].uses && vanityData.uses != 0) {
           msgEmbed.setDescription(`Created: ${creationDate}\nInvite: **${member.guild.vanityURLCode}** \nUses: **${member.guild.vanityURLUses}**`);
           logChannel.send({ content: ':inbox_tray: <@' + member.id + '> joined!', embeds: [msgEmbed] });
-          usedVanityCode = 1;
+          usedVanityCode = true;
         }
         // update vanity cache for this guild
         vanityInvites[member.guild.id] = {
