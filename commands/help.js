@@ -1,4 +1,4 @@
-const { getPermLevel, getConfig } = require('../extras/common.js');
+const { getMessagePermLevel, getConfig } = require('../extras/common.js');
 
 module.exports = {
   name: 'help',
@@ -8,7 +8,7 @@ module.exports = {
   cooldown: 3,
   execute(message, args) {
     const config = getConfig(message.client, message.guild.id);
-    const permLevel = getPermLevel(message);
+    const permLevel = getMessagePermLevel(message.member, message.guild, message.client);
     let data = new String;
     const { commands } = message.client;
     // If the help invoker is staff, give all commands.

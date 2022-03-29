@@ -15,7 +15,7 @@ const voteDataPath = './votes.json';
 if (fs.existsSync(voteDataPath)) {global.voteData = require(voteDataPath);}
 const moment = require('moment-timezone');
 // const starboard = require('./starboard.js');
-const { getPermLevel, pkQuery, getConfig, isTextChannel } = require('./extras/common.js');
+const { getMessagePermLevel, pkQuery, getConfig, isTextChannel } = require('./extras/common.js');
 const { prepTables } = require('./commands/config.js');
 
 
@@ -223,7 +223,7 @@ client.on('messageCreate', async message => {
   } */
   // cache PKData for message.
   await pkQuery(message);
-  const permLevel = getPermLevel(message);
+  const permLevel = getMessagePermLevel(message);
   // prevent parsing commands without correct prefix, from bots, and from non-staff non-users.
   if (!message.content.startsWith(config.prefix) || (message.author.bot && !message.isPKMessage)) return;
   // ensure the channel is a guild text or guild thread channel.
@@ -232,7 +232,7 @@ client.on('messageCreate', async message => {
   let commandName = args.shift().toLowerCase();
 
   // handle using help as an argument - transpose '!command help' to !help command
-  if (args[0] && args[0].toLowerCase() === 'help') {
+  if (args[0] && args[0].toLowerCase() === 'help' && client.commands.has(commandName)) {
     args.length = 1;
     args[0] = commandName;
     commandName = 'help';

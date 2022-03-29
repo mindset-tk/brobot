@@ -19,8 +19,13 @@ async function writeConfigTables(botdb, client, guildId = null) {
   // TODO write an "all guilds" version in case guildId is null.
 }
 
-// function to determine if a user's permission level - returns null, 'member', or 'staff'
-function getPermLevel(message) {
+/**
+* Function to determine if a message author's permission level - returns null, 'member', or 'staff'
+* Use this for messages since they might be PK messages.
+* @param message discord message object
+* @returns {string} null, 'member', or 'staff'
+*/
+function getMessagePermLevel(message) {
   if (message.channel instanceof Discord.DMChannel) return null;
   const config = getConfig(message.client, message.guild.id);
   // if the staff role has not been set, the bot responds to all commands on a server
@@ -47,6 +52,31 @@ function getPermLevel(message) {
     else {return null;}
   }
   return null;
+}
+
+/**
+* Function to find a user's permission level - returns null, 'member', or 'staff'
+* Use this for eg, Interactions, since a message object is not used here and PK isn't compatible with interactions at this time.
+* @param member discord guildmember object
+* @param guild discord guild object
+* @param client Discord client
+* @returns {string} null, 'member', or 'staff'
+*/
+function getUserPermLevel(member, guild, client) {
+  const config = getConfig(client, guild.id);
+  // if the staff role has not been set, the bot responds to all commands on a server
+  // TODO add some advisory message to this effect - DM the server inviter maybe?
+  if (config.roleStaff == '' || !config.roleStaff) {
+    return 'staff';
+  }
+
+  if (member.roles.cache.has(config.roleStaff) || member.permissions.has('ADMINISTRATOR')) {
+    return 'staff';
+  }
+  else if (member.roles.cache.has(config.roleComrade)) {
+    return 'user';
+  }
+  else {return null;}
 }
 
 // function to get config for a given guild.
@@ -162,7 +192,7 @@ async function pkQuery(message, force = false) {
   const pkAPIurl = 'https://api.pluralkit.me/v1/msg/' + message.id;
   try {
     let pkResponse = await fetch(pkAPIurl);
-    if (pkResponse.headers.get('content-type').includes('application/json')) {
+    if (pkResponse.ok && pkResponse.headers.get('content-type').includes('application/json')) {
       message.isPKMessage = true;
       pkResponse = await pkResponse.json();
       try { message.PKData.author = await message.guild.members.fetch(pkResponse.sender);}
@@ -205,7 +235,8 @@ function isTextChannel(channel) {
 }
 
 module.exports = {
-  getPermLevel,
+  getMessagePermLevel,
+  getUserPermLevel,
   dmCollector,
   promptForMessage,
   promptYesNo,
