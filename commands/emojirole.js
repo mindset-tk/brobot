@@ -102,8 +102,14 @@ module.exports = {
         // Give the role to the user!
         const role = await message.guild.roles.fetch(emojiData.role_id);
         const member = await message.guild.members.fetch(user.id.toString());
-        if (role && member) {
+        if (role && member && member.roles.cache.has(role.id)) {
           await member.roles.add(role);
+          try {
+            await member.send({ content: `Gave you the ${role.name} role!` });
+          }
+          catch {
+            console.info(`Could not send role DM to user ${member.user.tag}. They probably have DMs disabled; this is noncritical.`);
+          }
         }
       }
       else {
@@ -137,8 +143,14 @@ module.exports = {
         // Remove the role from the user!
         const role = await message.guild.roles.fetch(emojiData.role_id);
         const member = await message.guild.members.fetch(user.id.toString());
-        if (role && member) {
+        if (role && member && member.roles.cache.has(role.id)) {
           await member.roles.remove(role);
+          try {
+            await member.send({ content: `Removed the ${role.name} role!` });
+          }
+          catch {
+            console.info(`Could not send role DM to user ${member.user.tag}. They probably have DMs disabled; this is noncritical.`);
+          }
         }
       }
     });
@@ -386,19 +398,16 @@ async function newRolePost(message, args, botdb) {
   if(!channel || channel.type != 'GUILD_TEXT') {
     return;
   }
-  // we don't care if the last item is a role, but if it's anything else, it's overflow.
-  if (await parseRole(args[0], message)) {args.shift();}
   if(args.length > 0) {
     return message.reply('Too many parameters! \'' + args[0] + '\' and everything past it is not useable.');
   }
 
   const existPost = await getPostbyLabel(message, label, botdb);
-
   if(existPost && existPost.active) {
-    return message.reply(`A post with label ${existPost.label} already exists in channel ${existPost.channel}`);
+    return message.reply(`A post with label ${existPost.label} already exists in <#${channel.id}>`);
   }
   else if(existPost && !existPost.active) {
-    return message.reply(`A post with label ${existPost.label} already exists in channel ${existPost.channel}, but is not yet active. Use the activate function to post it!`);
+    return message.reply(`A post with label ${existPost.label} already exists in <#${channel.id}>, but is not yet active. Use the activate function to post it!`);
   }
   const newPost = {
     // use a semirandom "snowflake" as a placeholder value for message_id, since it can't be null.
