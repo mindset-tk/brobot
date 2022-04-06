@@ -11,7 +11,7 @@ module.exports = {
     const config = getConfig(message.client, message.guild.id);
     const client = message.client;
     const announcements = client.channels.cache.get(config.channelAnnouncements);
-    if (!config.roleAdmin) { return; }
+    if (!config.roleAdmin || !config.adminHoistToggle) { return; }
     if (!message.member.roles.cache.has(config.roleAdmin)) {
       message.channel.send('Elevating you to Admin.');
       if (announcements) { announcements.send('@everyone : ' + message.author.displayName + ' has escalated to admin!'); }
