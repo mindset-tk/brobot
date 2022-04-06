@@ -1,13 +1,19 @@
 const Discord = require('discord.js');
 const fetch = require('node-fetch');
 
-// function to save config tables to the db.
-// guildId is optional but best practice to use it whenever possible to reduce wasteful DB access
+
+/**
+* Function to save a specific guild's config tables to the db.
+* @param botdb discord message object
+* @param client discord client
+* @param guildId guild id (optional, but best practice to use it whenever possible to reduce wasteful DB access)
+*
+* @returns {promise} resolves once db writes are complete.
+*/
 async function writeConfigTables(botdb, client, guildId = null) {
   // if the guildId is specified when calling this function (it should be 99% of the time)
   if (guildId != null) {
     const configToWrite = getConfig(client, guildId);
-    // let sqlStatement = 'INSERT OR IGNORE INTO config(guild_id, item, value) VALUES';
     const configArr = [];
     for (const [key, value] of Object.entries(configToWrite)) {
       configArr.push(botdb.run(`UPDATE config
@@ -85,21 +91,25 @@ function getConfig(client, guildId) {
   return client.guildConfig.get(guildId);
 }
 
-// function to create a message collector in a DM. Timeout is 3 minutes.
-// TODO: make timeout adjustable
-async function dmCollector(dmChannel) {
+/**
+* Function to create a message collector in a DM. Default timeout is 3 minutes.
+* Use this for eg, Interactions, since a message object is not used here and PK isn't compatible with interactions at this time.
+* @param dmChannel discord channel object, specifically for a dm
+* @param {integer} timeout optional - timeout in milliseconds to wait for a reply.
+* @returns {string} null, 'member', or 'staff'
+*/
+async function dmCollector(dmChannel, timeout = 18000) {
   // let responses = 0;
   let reply = false;
   // awaitmessages needs a filter but we're just going to accept the first reply it gets.
   const filter = m => (m.author.id === dmChannel.recipient.id);
-  await dmChannel.awaitMessages({ filter, max: 1, time: 180000, errors: ['time'] })
+  await dmChannel.awaitMessages({ filter, max: 1, time: timeout, errors: ['time'] })
     // this method creates a collection; since there is only one entry we get the data from collected.first
     .then(collected => reply = collected.first())
     .catch(err => {
       console.err(err);
       dmChannel.send('Sorry, I waited 3 minutes with no response. You will need to start over.');
     });
-  // console.log('Reply processed...');
   return reply;
 }
 
@@ -113,11 +123,12 @@ async function dmCollector(dmChannel) {
  *
  * @param dmChannel {Discord.DMChannel} The DM channel to prompt in
  * @param handler {function(Discord.Message): object|string|Promise<object|string>}} The function that handles the reply.
+ * @param timeout (optional) timeout for message prompt
  * @returns {Promise<object|boolean>} Returns the result from the handler or `false` if aborted.
  ` */
-async function promptForMessage(dmChannel, handler) {
+async function promptForMessage(dmChannel, handler, timeout) {
   while (true) {
-    const reply = await dmCollector(dmChannel);
+    const reply = await dmCollector(dmChannel, (timeout || null));
     if (!reply) {
       return false;
     }
