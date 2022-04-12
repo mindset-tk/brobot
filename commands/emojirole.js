@@ -2,8 +2,6 @@
 // based on rewrites by anotak to
 // Sciman101's JNFR emojirole.js from here:
 // https://github.com/Sciman101/JNFR/blob/master/commands/emojirole.js
-// TODO: cleanup/garbage collect to remove orphaned emoji from role_menu_emoji.  Shouldn't happen often; Maybe only do it at init?
-// note to self: use outer join for cleanup tool.
 // TODO: add function to move a post to a new channel.
 const { MessageEmbed } = require('discord.js');
 const emojiRegex = require('emoji-regex');

@@ -16,7 +16,7 @@ if (fs.existsSync(voteDataPath)) {global.voteData = require(voteDataPath);}
 const moment = require('moment-timezone');
 // const starboard = require('./starboard.js');
 const { getMessagePermLevel, pkQuery, getConfig, isTextChannel } = require('./extras/common.js');
-const { prepTables } = require('./commands/config.js');
+const { prepTables: prepConfigTables } = require('./commands/config.js');
 
 
 // initialize apitokens.json and error out if api token is missing.
@@ -83,7 +83,7 @@ let botdb;
     });
     // prepTables preps any new config related tables.
     // cannot be used via init() as it sets up values that init processes will need.
-    await prepTables(client, botdb);
+    await prepConfigTables(client, botdb);
     const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
     for (const file of commandFiles) {
       const command = require(`./commands/${file}`);
