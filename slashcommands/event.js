@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const Discord = require('discord.js');
 const moment = require('moment-timezone');
 // const tz = require('../extras/timezones');
-const { promptForMessage, promptYesNo, getConfig } = require('../extras/common.js');
+const { promptForMessage, promptYesNo, getUserPermLevel, getConfig } = require('../extras/common.js');
 const { performance } = require('perf_hooks');
 
 // let eventInfoChannel = null;
