@@ -154,7 +154,7 @@ async function promptForMessage(dmChannel, handler, timeout) {
  *
  * @param dmChannel {Discord.DMChannel} The DM channel to prompt in
  * @param options {object} Options containing messages with strings for the above keys.
- * @returns {Promise<object|boolean>} Returns `{answer: true}` for yes, `{answer: true}` for no, or `false` if aborted.
+ * @returns {Promise<object|boolean>} Returns `{answer: true}` for yes, `{answer: false}` for no, or `false` if aborted.
  */
 async function promptYesNo(dmChannel, options) {
   return promptForMessage(dmChannel, (reply) => {
