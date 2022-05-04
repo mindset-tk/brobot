@@ -1,9 +1,40 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { MessageActionRow, MessageButton, Collection, MessageEmbed, Constants } = require('discord.js');
 const moment = require('moment-timezone');
-// const tz = require('../extras/timezones');
+const tz = require('../extras/timezones');
 const { promptForMessage, promptYesNo, getUserPermLevel, getConfig } = require('../extras/common.js');
 const { performance } = require('perf_hooks');
+const chrono = require('chrono-node');
+
+function generateTimeZoneEmbed() {
+  const zonesByRegion = new Collection();
+  for (const zone of tz.LOCAL_TIMEZONES) {
+    let regData = zonesByRegion.get(zone.region);
+    if (!regData) {
+      regData = [];
+    }
+    regData.push(zone);
+    zonesByRegion.set(zone.region, regData);
+  }
+  const tzEmbed = new MessageEmbed();
+  const zoneArr = [];
+  let i = 0;
+  for (const [region, zones] of zonesByRegion) {
+    let fieldVal = '';
+    for (const zone of zones) {
+      zoneArr.push(zone);
+      i++;
+      fieldVal += `**${i}.** ${zone.name}\n`;
+    }
+    tzEmbed.addField(region, fieldVal, true);
+  }
+  tzEmbed.setFooter({ text: 'To exit type \'cancel\'.' });
+  tzEmbed.setTitle('Enter your time zone\'s number');
+  tzEmbed.setDescription('Alternatively, enter a UTC/GMT time code like \'UTC+1\'. Note that manual time codes will not follow any Daylight Savings time adjustments.');
+  return [tzEmbed, zoneArr];
+}
+
+const [TZEMBED, TZARR] = generateTimeZoneEmbed();
 
 // let eventInfoChannel = null;
 
@@ -103,8 +134,8 @@ class EventManager {
   }
 
   /**
-   * Load the state of the EventManager from the database into a client var.
-   * TODO SQLify
+   * Load the state of the EventManager from the database into client.eventData
+   *
    */
   async loadState() {
     this.client.eventData = new Collection();
@@ -112,6 +143,7 @@ class EventManager {
     for (let [, guild] of await this.client.guilds.fetch()) {
       guild = await guild.fetch();
       // TODO: get event posts channel and update it
+      // actually I think the first tick kind of handles this?
       // const config = getConfig(this.client, guild.id);
       const guildData = {
         events: new Collection(),
@@ -126,7 +158,7 @@ class EventManager {
           const channel = await this.client.channels.fetch(e.channel_id);
           const organizer = await guild.members.fetch(e.organizer_id);
           let role = null;
-          if (eventRole) { role = await guild.roles.fetch(eventRole.role_id); };
+          if (eventRole) { role = await guild.roles.fetch(eventRole.role_id); }
           if (role) { role.autoDelete = eventRole.autoDelete; }
           const eventPosts = await this.botdb.all('SELECT * FROM event_posts WHERE event_id = ?', e.event_id);
           const posts = new Collection();
@@ -142,7 +174,7 @@ class EventManager {
             member.attendanceStatus = a.attendance_status;
             attendees.set(member.id, member);
           }
-          const eventAttOpts = await this.botdb.all('SELECT * FROM event_attendopts WHERE event_id =?', e.event_id);;
+          const eventAttOpts = await this.botdb.all('SELECT * FROM event_attendopts WHERE event_id =?', e.event_id);
           const attendanceOptions = new Collection();
           for(const o of eventAttOpts) {
             const attobj = {
@@ -151,7 +183,7 @@ class EventManager {
             };
             attendanceOptions.set(o.listindex, attobj);
           }
-          const event = new Event(e.name, e.event_id, channel, e.timezone, moment(e.start_time), e.duration, organizer, attendanceOptions, e.recurrence_period, e.recurrence_count, role, posts, attendees, e.description);
+          const event = new Event(e.name, e.event_id, channel, e.timezone, moment.tz(e.start_time, e.timezone), e.duration, organizer, attendanceOptions, e.recurrence_period, e.recurrence_count, role, posts, attendees, e.description);
           guildData.events.set(e.event_id, event);
         }));
         // TODO finished role handling
@@ -228,7 +260,7 @@ class EventManager {
   }
 
   /**
-   * Save a single event to SQLite (instead of rewriting the whole table)
+   * TODO: Save a single event to SQLite (instead of rewriting the whole table)
    */
 
   /**
@@ -244,18 +276,6 @@ class EventManager {
         this.tick();
       }, topOfMinute);
     });
-
-    /*
-    * TODO: Time zones only need to be queried at event instantiation
-    * REMOVE TZ post and move to the setup loop.
-    // update time zone posts in case list of time zones has changed.
-    this.client.guilds.cache.forEach((g) => {
-      const config = getConfig(g.client, g.id);
-      if (config.eventInfoChannelId) {
-        this.updateTZPost(g.id);
-      }
-    }); */
-
   }
 
   /**
@@ -268,13 +288,14 @@ class EventManager {
     const promiseArr = [];
     // collect events that should be completed.
     for (const [guildId, guildData] of this.client.eventData) {
+      // TODO: cleanup this func; add guard here and split out to funcs.
       const events = guildData.events;
       if (events.size > 0) {
         const config = getConfig(this.client, guildId);
         let eventInfoChannel;
         try {eventInfoChannel = await this.client.channels.fetch(config.eventInfoChannel);}
         catch {eventInfoChannel = null;}
-        // filter due events and upcoming events
+        // iterate through events and handle due and upcoming events
         for (const [eventid, event] of events) {
           // console.log(event.start);
           if (event.start.isSameOrBefore(now)) {
@@ -302,7 +323,7 @@ class EventManager {
                 promiseArr.push(message.delete());
               }
               else {
-                promiseArr.push(updatePost(message, event, eventFinished));
+                promiseArr.push(updateOngoingEvent(message, event, eventFinished));
               }
             }
             if (eventFinished) {
@@ -360,12 +381,12 @@ class EventManager {
   }
 
   /**
-   * Add a new event to the EventManager.
+   * Set an event in the event manager.
    *
    * @param {Event} event complete event obj
    * @returns {Promise<*>} Resolves once the event has been saved persistently.
    */
-  async add(event) {
+  async set(event) {
     const guild = event.channel.guild;
     const guildData = this.client.eventData.get(guild.id) || new Collection();
     guildData.events.set(event.id, event);
@@ -374,178 +395,60 @@ class EventManager {
   }
 
   /**
-   * Get the event with this name on a specific guild.
-   *
-   * @param guildId The Snowflake corresponding to the event's guild
-   * @param eventName The name of the event to retrieve
-   * @returns Event data or undefined
-   * TODO: update/remove
+   * Remove an event from the event manager and save state.
+   * This should only be called after any recurrence is over.
+   * TODO test to ensure this is working as expected. should be done.
+   * @param {Event} event complete event obj
+   * @returns {Promise<*>} Resolves once events have been saved persistently.
    */
-  getByName(guildId, eventName) {
-    const index = this._indexByName(guildId, eventName);
-    return index !== undefined ? this.upcomingEvents[guildId][index] : index;
+  async delete(event) {
+    const guild = event.channel.guild;
+    const guildData = this.client.eventData.get(guild.id);
+    guildData.events.delete(event.id);
+    this.client.eventData.set(guild.id, guildData);
+    this.eventsPendingPrune.set(event.id, event);
+    if (event.role && event.role.autoDelete) {
+      this.rolesPendingPrune.set(event.role.id, event.role);
+    }
+    return await this.saveState();
   }
-
-  /**
-   * Update the event data for a named event on a specific guild
-   *
-   * @param guildId The Snowflake corresponding to the event's guild
-   * @param eventName The name of the event to retrieve
-   * @param event The new event data
-   * @returns {Promise<boolean>} Resolves with whether the event was updated
-   * TODO: update/remove
-   */
-  async updateByName(guildId, eventName, event) {
-    const index = this._indexByName(guildId, eventName);
-    if (index === undefined) {
-      return false;
-    }
-
-    this.upcomingEvents[guildId][index] = event;
-    await this.saveState();
-    return true;
-  }
-
-  /**
-   * Delete a named event on a specific guild
-   *
-   * @param guildId The Snowflake corresponding to the event's guild
-   * @param eventName The name of the event to retrieve
-   * @returns {Promise<boolean>} Resolves with whether the event was delete
-   * TODO: update/remove
-   */
-  async deleteByName(guildId, eventName) {
-    const index = this._indexByName(guildId, eventName);
-    if (index === undefined) {
-      return false;
-    }
-
-    this.upcomingEvents[guildId].splice(index, 1);
-    await this.updateUpcomingEventsPost(guildId);
-    await this.saveState();
-    return true;
-  }
-
-  /**
-   * Get the active events for a specified guild.
-   *
-   * @param guild Snowflake of the Guild to scope events to.
-   * @returns Array of events for guild.
-   * TODO: update/remove
-   */
-  guildEvents(guild) {
-    return this.upcomingEvents[guild] || [];
-  }
-
-  /**
-   * Adds a participant to an event.
-   *
-   * @param guildId Snowflake of the Guild to scope events to.
-   * @param userId Snowflake of the User to be added to the event.
-   * @param eventName Name of the event to be updated.
-   * @returns {boolean} Whether the user was added to the event (false if already added).
-   * TODO: update
-   */
-  async addParticipant(guildId, userId, eventName) {
-    const event = this.getByName(guildId, eventName);
-    if (!event) {
-      return false;
-    }
-
-    const guild = this.client.guilds.cache.get(guildId);
-    const member = guild.members.cache.get(userId);
-    await member.roles.add(event.role, 'Requested to be added to this event');
-
-    return true;
-  }
-
-  /**
-   * Removes a participant from an event.
-   *
-   * @param guildId Snowflake of the Guild to scope events to.
-   * @param userId Snowflake of the User to be removed to the event.
-   * @param eventName Name of the event to be updated.
-   * @returns {boolean} Whether the user was removed from the event (false if not already added).
-   * TODO: update
-   */
-  async removeParticipant(guildId, userId, eventName) {
-    const event = this.getByName(guildId, eventName);
-    if (!event) {
-      return false;
-    }
-
-    const guild = this.client.guilds.cache.get(guildId);
-    const member = guild.members.cache.get(userId);
-    await member.roles.remove(
-      event.role,
-      'Requested to be removed from this event',
-    );
-
-    return true;
-  }
-
-  /**
-   * Updates the guild's time zone post. Only runs at start, in case any time zones have been added.
-   *
-   * @param guildId Snowflake of the Guild to update the event post for
-   * @returns {Promise<void>} Resolves when post update complete.
-   *
-   * TODO revamp time zone management
-
-  async updateTZPost(guildId) {
-    const client = this.client;
-    const config = getConfig(client, guildId);
-    const guild = this.client.guilds.cache.get(guildId);
-    const tzMessage = this.timeZoneInfoMessage[guildId];
-
-    const tzTemplateParams = {
-      tzlist: tz.LOCAL_TIMEZONES.map(({ name, abbr, dstAbbr }) => {
-        // Show DST and standard abbreviation together, where needed
-        const tzAbbrs = dstAbbr ? `${abbr}/${dstAbbr}` : abbr;
-
-        return `${tzAbbrs} - ${name}`;
-      }).join('\n'),
-    };
-
-    if (eventInfoChannel) {
-      if (!guild.channels.cache.has(eventInfoChannel.id)) {
-        return;
-      }
-    }
-
-    if (tzMessage) {
-      console.log('found time zone message', tzMessage.id);
-      await tzMessage.edit(TZ_MESSAGE_TEMPLATE(tzTemplateParams, config));
-    }
-    else {
-      console.log(
-        `No time zone info message found for guild ${guildId}, send a new one.`,
-      );
-      const newMessage = await eventInfoChannel.send(
-        TZ_MESSAGE_TEMPLATE(tzTemplateParams, config),
-      );
-      this.timeZoneInfoMessage[guildId] = newMessage;
-      await this.saveState();
-    }
-  }*/
 }
 
 let eventManager;
 
 /**
-   * Updates the post for an event if applicable.
+   * Updates a single post for an event based on if it is finished or ongoing.
    *
    * @param {Discord.Message} message event post message object
    * @param {Event} event
-   * @param {Boolean} eventFinished
+   * @param {Boolean} eventFinished if true, removes interaction buttons from the post & updates
+   * description to state that the event is finished. if false, description will state that event is onging.
+   * TODO? better readability if this is remade to "updateEventPost" and checks for itself if the event is
+   * completed/ongoing?
    * @returns {Promise<void>} Resolves when post update complete.
    */
-async function updatePost(message, event, eventFinished = false) {
-  // .
+async function updateOngoingEvent(message, event, eventFinished = false) {
+  const msgPayload = await generatePost(event);
+  if (eventFinished) {
+    msgPayload.embeds[0].setDescription(msgPayload.embeds[0].description ? `${msgPayload.embeds[0].description}\n Event is now finished.` : 'Event is now finished.');
+    const newRows = [];
+    msgPayload.components.forEach(row => {
+      for(let i = 0; i < (row.components.length); i++) {
+        row.components[i].setDisabled(true);
+      }
+      newRows.push(row);
+    });
+    msgPayload.components = newRows;
+    //  console.log(interaction.message);
+  }
+  else {
+    msgPayload.embeds[0].setDescription(msgPayload.embeds[0].description ? `${msgPayload.embeds[0].description}\n Event is ongoing!` : 'Event is ongoing!');
+  }
+  await message.edit(msgPayload);
 }
 
 /**
-   * Send announcement to event channel, with possible role announce
+   * Send announcement to event channel, with possible role mention
    *
    * @param {Event} event
    * @returns {Promise<void>} Resolves when announce completed.
@@ -574,10 +477,98 @@ async function postEventEmbed(event, channel) {
  *
  * @returns {Promise<void>} Resolves when all messages are updated.
  */
-async function editEventPosts(interaction) {
-  const event = getEventByPost(interaction);
+async function editEventButton(interaction) {
+  const event = await getEventByPost(interaction);
   const editedEvent = await dmEditEvent(interaction, event);
-  const msgPayload = await generatePost(editedEvent);
+  if (editedEvent) {
+    const guildData = interaction.client.eventData.get(interaction.guild.id);
+    guildData.events.set(editedEvent.id, editedEvent);
+    const msgPayload = await generatePost(editedEvent);
+    const promiseArr = [];
+    for (const [, message] of event.posts) {
+    // edit every post except for the interaction post;
+    // this is to avoid a discord API error about unhandled interactions.
+      if (message.id != interaction.message.id) {
+        promiseArr.push(message.edit(msgPayload));
+      }
+    }
+    // ...and then edit the original interaction post that the user pressed a button on.
+    promiseArr.push(interaction.editReply(msgPayload));
+    promiseArr.push(eventManager.saveState);
+    await Promise.all(promiseArr);
+  }
+  // unnecesary; handle replies upstream of this.
+  // else { interaction.reply({ conent: 'Event editing cancelled!', ephemeral: true }); }
+  return;
+}
+
+/**
+ * Delete an event via interaction.
+ *
+ * @param {Discord.Interaction} interaction
+ *
+ * @returns {Promise} Resolves to message embed
+ */
+async function deleteEventButton(interaction) {
+  const config = getConfig(interaction.client, interaction.guild.id);
+  let staffrole;
+  try { staffrole = interaction.guild.roles.fetch(config.staffrole); }
+  catch { staffrole = null; }
+  const event = await getEventByPost(interaction);
+  if (interaction.member.id != event.organizer.id && getUserPermLevel(interaction.member, interaction.guild, interaction.client) != 'staff') {
+    return interaction.followUp(`Sorry, only the organizer${staffrole ? ` or someone with the @${staffrole.name} role` : ''} can delete an event.`);
+  }
+  const newRows = [];
+  interaction.message.components.forEach(row => {
+    for(let i = 0; i < (row.components.length); i++) {
+      row.components[i].setDisabled(true);
+    }
+    newRows.push(row);
+  });
+  const promiseArr = [];
+  const msgPayload = { content: 'Event deleted.', embeds: [], components: newRows };
+  for (const [, message] of event.posts) {
+    // edit every post except for the interaction post;
+    // this is to avoid a discord API error about unhandled interactions.
+    if (message.id != interaction.message.id) {
+      promiseArr.push(message.edit(msgPayload));
+    }
+  }
+  // ...and then edit the original reaction.
+  promiseArr.push(interaction.editReply(msgPayload));
+  promiseArr.push(eventManager.delete(event));
+  await Promise.all(promiseArr);
+  return;
+}
+
+/**
+ * Update the attendance of an event, then push the new event data into the eventManager.
+ * TODO add role functionality
+ * @param {Discord.Interaction} interaction
+ *
+ * @returns {Promise} Resolves when message is updated and state is saved.
+ */
+async function updateAttendanceButton(interaction) {
+  const event = await getEventByPost(interaction);
+  // get emoji; if it's a unicode emoji it will be only a couple chars long, otherwise
+  // discord emoji string - <:emojiname:snowflake>
+  const emoji = interaction.customId.slice(15);
+  const member = interaction.member;
+  if (event.attendees.has(member.id)) {
+    const currentAttendance = event.attendees.get(member.id);
+    if (currentAttendance.attendanceStatus == emoji) {
+      event.attendees.delete(member.id);
+    }
+    else {
+      member.attendanceStatus = emoji;
+      event.attendees.set(member.id, member);
+    }
+  }
+  else {
+    member.attendanceStatus = emoji;
+    event.attendees.set(member.id, member);
+  }
+  const msgPayload = await generatePost(event);
   const promiseArr = [];
   for (const [, message] of event.posts) {
     // edit every post except for the interaction post;
@@ -588,63 +579,686 @@ async function editEventPosts(interaction) {
   }
   // ...and then edit the original reaction.
   promiseArr.push(interaction.editReply(msgPayload));
+  promiseArr.push(eventManager.set(event));
   await Promise.all(promiseArr);
   return;
 }
 
 /**
- * Delete an event post via interaction.
- * TODO WRITE
- * @param {Discord.Interaction} interaction
- *
- * @returns {Promise} Resolves to message embed
- */
-async function deleteEventByPost(interaction) {
-  const msgContents = {};
-  const event = getEventByPost(interaction);
-  return msgContents;
-}
-
-/**
- * Update the attendance of an event, then return a message embed.
- * TODO WRITE
- * @param {Discord.Interaction} interaction
- * @param {}
- * @returns {Promise} Resolves to message embed
- */
-async function updateAttendance(interaction) {
-  const msgContents = {};
-  const event = getEventByPost(interaction);
-}
-
-/**
  * start and run dm loop to edit event
  *
- * @param {Discord.User} user user data
+ * @param {Discord.User} interaction user data
+ * @param {Event} event event
  *
  * @returns {Promise<Event>} updated/edited event data.
  */
 async function dmEditEvent(interaction, event) {
   const dmChannel = await interaction.user.createDM();
+  // make a shallow copy of event so we aren't modifying the one in memory.
+  let newEvent = { ...event };
+  // first message sent in a try/catch so we can catch any errors sending the dm
+  // discord.js needs a ".canDM()" method or something cmon
+  // build initial embed.
+  let editloop = true;
+  let result = '';
+  let editEmbed = generateEditEmbed(newEvent);
   try {
-    await dmChannel.send('a');
+    await dmChannel.send({ content: 'You may type \'cancel\' at any point in this process to abort without saving your changes.', embeds: [editEmbed] });
   }
   catch(err) {
     if (err.message == 'Cannot send messages to this user') {
-      interaction.reply({ content: 'Sorry, I can\'t seem to DM you. Please make sure that your privacy settings allow you to recieve DMs from this bot.', ephemeral: true });
+      interaction.followUp({ content: 'Sorry, I can\'t seem to DM you. Please make sure that your privacy settings allow you to recieve DMs from this bot.', ephemeral: true });
+      return false;
     }
     else {
-      interaction.reply({ content: 'There was an error sending you a DM! Please check your privacy settings.  If your settings allow you to recieve DMs from this bot, check the console for full error review.', ephemeral:true });
+      interaction.followUp({ content: 'There was an error sending you a DM! Please check your privacy settings.  If your settings allow you to recieve DMs from this bot, check the console for full error review.', ephemeral:true });
       console.log(err);
+      return false;
     }
-    return event;
+  }
+  result = await promptForMessage(dmChannel, async (reply) => {
+    // response here should be simple - 1 through 8.
+    const content = reply.content.trim();
+    if (!(parseInt(content) > 0 && parseInt(content) <= 8)) {
+      switch(content.toLowerCase()) {
+      case 'cancel':
+      case 'abort':
+        dmChannel.send('Event creation cancelled. Please edit the event again to restart the process.');
+        return 'abort';
+      default:
+        dmChannel.send('I\'m sorry, I didn\'t understand that.  Please only respond with a number from 1 to 8, or \'cancel\' to cancel.');
+        return 'retry';
+      }
+    }
+    else { return parseInt(content); }
+  });
+
+  if (!result) { editloop = false; }
+
+  while (editloop) {
+    switch (result) {
+    case 1:
+      [newEvent, result] = await dmPromptEventName(dmChannel, newEvent, 'edit');
+      break;
+    case 2:
+      [newEvent, result] = await dmPromptEventDescription(dmChannel, newEvent, 'edit');
+      break;
+    case 3:
+      [newEvent, result] = await dmPromptStart(dmChannel, newEvent, 'edit');
+      break;
+    case 4:
+      [newEvent, result] = await dmPromptDuration(dmChannel, newEvent, 'edit');
+      break;
+    case 5:
+      [newEvent, result] = await dmPromptRecurrence(dmChannel, newEvent, 'edit');
+      break;
+    case 6:
+      [newEvent, result] = await dmPromptAttOpts(dmChannel, newEvent, 'edit');
+      break;
+    case 7:
+      [newEvent, result] = await dmPromptRole(dmChannel, newEvent, 'edit');
+      break;
+    case 8:
+      [newEvent, result] = await dmPromptAutoDelete(dmChannel, newEvent, 'edit');
+      break;
+    }
+    if (result && result !== 'cancel') {
+      editEmbed = generateEditEmbed(newEvent);
+      await dmChannel.send({ content: 'OK, done. Here is your new event. Please select an item, or type \'done\' to save your edits. \n***Your edits will not be saved until you type \'done\'***', embeds: [editEmbed] });
+      result = await promptForMessage(dmChannel, async (reply) => {
+      // response here should be simple - 1 through 8.
+        const content = reply.content.trim();
+        if (!(parseInt(content) > 0 && parseInt(content) <= 8)) {
+          switch(content.toLowerCase()) {
+          case 'cancel':
+          case 'abort':
+            dmChannel.send('Event creation cancelled. Please edit the event again to restart the process.');
+            return 'abort';
+          case 'done':
+          case 'save':
+            dmChannel.send('Great! I will save your event and update the related posts.');
+            return 'save';
+          default:
+            dmChannel.send('I\'m sorry, I didn\'t understand that.  Please only respond with a number from 1 to 8, or \'cancel\' to cancel.');
+            return 'retry';
+          }
+        }
+        else { return parseInt(content); }
+      });
+    }
+    if (!result || result === 'save' || result === 'cancel') { editloop = false; }
+  }
+  if (result === 'save') { return newEvent; }
+  else {
+    interaction.followUp({ content: 'Event editing cancelled!', ephemeral: true });
+    return false;
+  }
+}
+
+/**
+ * Generate two strings in an array:
+ * a date string formatted like: Sat, May 28, 2022, 02:55 PDT (UTC-7)
+ * a time zone sting formatted like: "UTC+1" or "PDT (UTC-7)"
+ * depending on if the time zone has an abbreviation or just a raw offset.
+ * @param {moment-timezone object} date
+ * @returns {array [string, string]} arr containing [date string, time zone string]
+ */
+function generateStartStr(date) {
+  const regMatch = date.format('Z').match(/(\+|-)(\d{2}):(\d{2})/);
+  let utcCode = 'UTC';
+  if (!(regMatch[2] === '00' && regMatch[3] === '00')) {
+    utcCode += `${regMatch[1]}${regMatch[2].startsWith('0') ? regMatch[2].slice(1) : regMatch[2]}${regMatch[3] == '00' ? '' : `:${regMatch[3]}`}`;
+  }
+  const tzString = date.format('z').match(/(\+|-)(\d+)/) ? utcCode : `${date.format('z')} (${utcCode})`;
+  return [`${date.format('ddd, MMM D, YYYY, hh:mm')} ${tzString}`, tzString ];
+}
+
+/**
+ * Generate an embed with current data for an event as numbered choices for editing.
+ *
+ * @param {Event} event
+ * @returns {MessageEmbed}
+ */
+function generateEditEmbed(event) {
+  const [ startStr ] = generateStartStr(event.start);
+  let attOptStr = '';
+  for(const obj of event.attendanceOptions.values()) {
+    attOptStr += `${obj.emoji} - ${obj.description}\n`;
+  }
+  if (attOptStr.length > 1) { attOptStr = attOptStr.slice(0, -1); }
+  else { attOptStr = '-'; }
+  const embed = new MessageEmbed()
+    .setTitle('What would you like to modify?')
+    .addFields([{ name: '1 ⋅ Title', value: event.name },
+      { name: '2 ⋅ Description', value: (event.description || '-') },
+      { name: '3 ⋅ Start time and time zone', value: startStr, inline: true },
+      { name: '4 ⋅ Duration', value: (event.duration || '-'), inline: true },
+      { name: '5 ⋅ Repeats', value: (event.recurrenceCount > 0 ? (`${event.recurrenceCount} times, every ${event.recurrencePeriod}`) : 'Never') },
+      { name: '6 ⋅ Signup choices', value: attOptStr, inline: true },
+      { name: '7 ⋅ Event role mention', value: (event.role || '-'), inline: true },
+      { name: '8 ⋅ Autodelete role?', value: (event.role ? (event.role.autoDelete ? 'Yes' : 'No') : '-'), inline: true }])
+    .setFooter({ text: 'Enter a number to select an option. To exit, type \'cancel\'' });
+  return embed;
+}
+
+/**
+ * Functions to ask for name of supplied event. If 'mode' is set to 'edit', enables
+ * 'back' keyword so user can return to edit without changing mode.
+ *
+ * @param {*} dmChannel
+ * @param {*} event
+ * @param {string} mode 'edit' or 'new' based on verbage needed.
+ * @returns {Array[Event, Boolean]} [event object, bool will only be false if aborted]
+ */
+async function dmPromptEventName(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.name ? `Current event name is **${event.name}**.` : ''} What would you like to name your event?`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 250) {
+      dmChannel.send(`Event names must be less than 250 characters in length.  Please enter a new name,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new name will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new name,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: 'Event creation cancelled. Please perform the command again to restart this process.',
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+
+/**
+ * Functions to ask for description of supplied event. If 'mode' is set to 'edit', enables
+ * 'back' keyword so user can return to edit without changing mode.
+ *
+ * @param {*} dmChannel
+ * @param {*} event
+ * @param {string} mode 'edit' or 'new' based on verbage needed.
+ * @returns {Array[Event, Boolean]} [event object, bool will only be false if aborted]
+ */
+async function dmPromptEventDescription(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 1000) {
+      dmChannel.send(`Event descriptions must be less than 1000 characters in length.  Please enter a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : '\'skip\' to skip this optional attribute,'} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'skip':
+      if (mode === 'edit') {
+        dmChannel.send('Sorry, \'skip\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else {
+        event.description = undefined;
+        return true;
+      }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new description will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : '\'skip\' to skip this optional attribute,'} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+
+/**
+ * Function to ask for timezone of supplied event. If 'mode' is set to 'edit', enables
+ * 'back' keyword so user can return to edit without changing mode.
+ *
+ * @param {*} dmChannel
+ * @param {*} event
+ * @param {string} mode 'edit' or 'new' based on verbage needed.
+ * @returns {Array[Event, Boolean]} [event object, bool will only be false if aborted]
+ */
+async function dmPromptStart(dmChannel, event, mode = 'new') {
+  let YN = {};
+  let promptTZ = true;
+  let promptDate = true;
+  let tzStr = '';
+  let startStr;
+  let newStart = false;
+  let newTZ = false;
+  if (mode === 'edit') {
+    [, tzStr] = generateStartStr(event.start);
+    dmChannel.send({ content: `Current time zone is **${tzStr}**. Would you like to change it? **Y/N**` });
+    YN = await promptYesNo(dmChannel, {
+      messages: {
+        no: 'No problem.',
+        cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+        invalid: `Reply not recognized! Please answer Y or N. Current time zone is **${tzStr}**. Would you like to change it? **Y/N**`,
+      },
+    });
+    if (YN !== false) {
+      switch (YN.answer) {
+      case true:
+        promptTZ = true;
+        break;
+      case false:
+        promptTZ = false;
+        break;
+      }
+    }
+    else { return [event, 'cancel']; }
+  }
+  if (mode === 'new' || promptTZ === true) {
+    dmChannel.send({ embeds: [TZEMBED] });
+    const result = await promptForMessage(dmChannel, async (reply) => {
+      const content = reply.content.trim();
+      let tzString;
+      if (content.toLowerCase() === 'back' && mode === 'edit') {
+        return 'back';
+      }
+      else if (content.toLowerCase() === 'cancel') {
+        return 'abort';
+      }
+      else if (parseInt(content) > 0 && parseInt(content) <= TZARR.length) {
+        const idx = parseInt(content) - 1;
+        newTZ = TZARR[idx];
+      }
+      else if(content.match(/(?:UTC|GMT)(\+|-)*(\d{1,2})?\n/)) {
+        const match = content.match(/(?:UTC|GMT)(\+|-)*(\d{1,2})?\n/);
+        newTZ.locale = tz.UTC_TIMEZONES[match[0]];
+        newTZ.name = match[0];
+      }
+      else {
+        dmChannel.send(`Sorry, I didn't recognize that reply. Please select a new timezone from the list above,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+        return 'retry';
+      }
+      if (event.start) {
+        const oldeventstart = event.start.format('YYYY-MM-DD[T]HH:mm:ss');
+        [, tzString] = generateStartStr(moment.tz(oldeventstart, newTZ.locale));
+      }
+      else {
+        [, tzString] = generateStartStr(moment().tz(newTZ.locale));
+      }
+      dmChannel.send({ content: `Ok, so you'd like to set the time zone for your event to **${tzString}**. Is this acceptable? **Y/N**\n*Note: Daylight savings will adjust based on any time change input in the next step.*` });
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please select a new timezone from the list above,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${tzString}** a good time zone for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    });
+    if (result === 'back') {
+      return [event, true];
+    }
+    else if (!result) {
+      return [event, 'cancel'];
+    }
+  }
+  if (mode === 'edit') {
+    // if newTZ exists, use that to generate the startStr.
+    // otherwise  just use the extant event.start.
+    if (newTZ) {
+      const oldeventstart = event.start.format('YYYY-MM-DD[T]HH:mm:ss');
+      [startStr, tzStr] = generateStartStr(moment.tz(oldeventstart, newTZ.locale));
+    }
+    else { [startStr, tzStr] = generateStartStr(event.start); }
+    dmChannel.send({ content: `Current start time is **${startStr}**. Please note that this may have changed from what you expect if you changed the timezone. Would you like to change the date and time? **Y/N**` });
+    YN = await promptYesNo(dmChannel, {
+      messages: {
+        no: 'Sounds good.',
+        cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+        invalid: `Reply not recognized! Please answer Y or N. Current start time is **${startStr}**. Would you like to change the date and time? **Y/N**`,
+      },
+    });
+    if (YN !== false) {
+      switch (YN.answer) {
+      case true:
+        promptDate = true;
+        break;
+      case false:
+        promptDate = false;
+        break;
+      }
+    }
+    else { return [event, 'cancel']; }
+  }
+  if (mode === 'new' || promptDate === true) {
+    let tzString;
+    if (event.start) {
+      const oldeventstart = event.start.format('YYYY-MM-DD[T]HH:mm:ss');
+      newStart = moment.tz(oldeventstart, newTZ);
+      [, tzString] = generateStartStr(newStart);
+    }
+    else {
+      [, tzString] = generateStartStr(moment().tz(event.timezone));
+    }
+    dmChannel.send(`Great, please type a time and date for the event. Acceptable formats:
+      Monday at 4pm
+      Tomorrow at 18:00
+      Now
+      In 3 hours
+      YYYY-MM-DD 2:00 PM
+      This date will be set in the ${tzString}.`);
+    const result = await promptForMessage(dmChannel, async (reply) => {
+      const content = reply.content.trim();
+      chrono.parseDate(content);
+    });
+  }
+}
+
+
+async function dmPromptDuration(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 1000) {
+      dmChannel.send(`Event descriptions must be less than 1000 characters in length.  Please enter a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new description will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+async function dmPromptRecurrence(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 1000) {
+      dmChannel.send(`Event descriptions must be less than 1000 characters in length.  Please enter a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new description will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+async function dmPromptAttOpts(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 1000) {
+      dmChannel.send(`Event descriptions must be less than 1000 characters in length.  Please enter a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new description will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+async function dmPromptRole(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 1000) {
+      dmChannel.send(`Event descriptions must be less than 1000 characters in length.  Please enter a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new description will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+async function dmPromptAutoDelete(dmChannel, event, mode = 'new') {
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim();
+    if (content.length >= 1000) {
+      dmChannel.send(`Event descriptions must be less than 1000 characters in length.  Please enter a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`);
+      return 'retry';
+    }
+    let YN = {};
+    switch(content.toLowerCase()) {
+    case 'back':
+      if (mode === 'new') {
+        dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+        return 'retry';
+      }
+      else { return true; }
+    case 'cancel':
+    case 'abort':
+      dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+      return 'abort';
+    default:
+      dmChannel.send(`Great! The new description will be **${content}**. Is this OK?  **Y/N**`);
+      YN = await promptYesNo(dmChannel, {
+        messages: {
+          no: `OK, please type a new description,${mode === 'edit' ? ' \'back\' to return to the edit screen,' : ''} or 'cancel' to quit this process entirely without saving changes.`,
+          cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+          invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+        },
+      });
+      if (YN !== false) {
+        switch (YN.answer) {
+        case true:
+          event.name = content;
+          return event;
+        case false:
+          return 'retry';
+        }
+      }
+      else { return 'abort'; }
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
   }
 }
 
 // find an event by its interaction ID.
 async function getEventByPost(interaction) {
-  const guildEvents = interaction.client.eventData.get(interaction.guild.id);
-  for (const [, e] of guildEvents) {
+  const guildData = interaction.client.eventData.get(interaction.guild.id);
+  for (const [, e] of guildData.events) {
     if (e.posts.has(interaction.message.id)) {
       return e;
     }
@@ -734,19 +1348,19 @@ async function generatePost(event) {
 async function createEvent(interaction) {
   interaction.reply('boobs');
   const newEvent = new Event();
-  newEvent.id = (Date.now().toString(10) + (Math.random() * 999).toFixed(0).toString(10).padStart(3, '0'));
+  newEvent.id = (Date.now().toString(10) + (Math.random() * 9999).toFixed(0).toString(10).padStart(4, '0'));
   newEvent.channel = interaction.options.getChannel('channel');
   newEvent.organizer = interaction.member;
-  newEvent.start = moment(interaction.options.getString('start'), 'x');
+  newEvent.start = moment(interaction.options.getString('start'), 'x').tz('America/Los_Angeles');
   newEvent.name = interaction.options.getString('name');
-  newEvent.timezone = 'PDT';
+  newEvent.timezone = 'America/Los_Angeles';
   newEvent.recurrenceCount = 0;
   newEvent.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
   newEvent.attendanceOptions.set(2, { emoji: '🤔', description: 'Maybe' });
   newEvent.attendanceOptions.set(3, { emoji: '❎', description: 'Decline' });
   const newPost = await postEventEmbed(newEvent, newEvent.channel);
   newEvent.posts.set(newPost.id, newPost);
-  await eventManager.add(newEvent);
+  await eventManager.set(newEvent);
 }
 
 module.exports = {
@@ -773,13 +1387,20 @@ module.exports = {
     .addSubcommand(subcommand =>
       subcommand
         .setName('cancel')
-        .setDescription('cancel an event')),
-  async execute(interaction, botdb) {
+        .setDescription('cancel an event'))
+    .addSubcommand(subcommand =>
+      subcommand
+        .setName('tz')
+        .setDescription('test posting tz embed')),
+  async execute(interaction) {
     const subCommand = interaction.options.getSubcommand();
     switch(subCommand) {
     case 'create':
       await createEvent(interaction);
       // JSON.parse();
+      break;
+    case 'tz':
+      interaction.reply({ embeds: [TZEMBED] });
       break;
     case 'edit':
       interaction.reply('edit');
@@ -833,24 +1454,32 @@ module.exports = {
     client.on('interactionCreate', async interaction => {
       // only staff/admins can manage config.
       if (!(interaction.isButton() && interaction.customId.startsWith('event'))) return;
+      if (!await getEventByPost(interaction)) {
+        const newRows = [];
+        interaction.message.components.forEach(row => {
+          for(let i = 0; i < (row.components.length); i++) {
+            row.components[i].setDisabled(true);
+          }
+          newRows.push(row);
+        });
+        //  console.log(interaction.message);
+        interaction.message.edit({ embeds: interaction.message.embeds, components: newRows });
+        return interaction.reply({ content: 'Sorry, that event is over!  I will disable the buttons.', ephemeral: true });
+      }
       await interaction.deferUpdate();
-      let newMsg = false;
       // handle event creation buttons.
-      switch (interaction.customId.subString(0, 15)) {
+      switch (interaction.customId.substring(0, 15)) {
       case 'eventEdit':
-        await editEventPosts(interaction);
+        await editEventButton(interaction);
         break;
       case 'eventDelete':
-        await deleteEventByPost(interaction);
-        interaction.delete();
+        await deleteEventButton(interaction);
         break;
       case 'eventAttendance':
-        newMsg = await updateAttendance(interaction);
+        await updateAttendanceButton(interaction);
         break;
       default:
-      }
-      if (newMsg) {
-        interaction.editReply(newMsg);
+        break;
       }
     });
   },
