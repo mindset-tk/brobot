@@ -122,7 +122,7 @@ async function dmCollector(dmChannel, timeout = 18000) {
  * Anything else will be returned as the value.
  *
  * @param dmChannel {Discord.DMChannel} The DM channel to prompt in
- * @param handler {function(Discord.Message): object|string|Promise<object|string>}} The function that handles the reply.
+ * @param handler {function(Discord.Message): object|string|Promise<object|string>} The function that handles the reply.
  * @param timeout (optional) timeout for message prompt
  * @returns {Promise<object|boolean>} Returns the result from the handler or `false` if aborted.
  ` */

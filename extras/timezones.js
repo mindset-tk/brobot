@@ -1,4 +1,11 @@
-// very incomplete!!!
+// Mostly complete. Uses many "regions" for when multiple countries
+// share the same time and daylight savings observance.  However,
+// if a time zone has a special abbreviation it always gets its
+// own entry (EG, Moscow shares a time zone with Turkey, but has
+// its own abbreviation in the moment-timezone database.)
+// therefore this arr should have every extant offset and abbr
+// with exception of Israel and certain unrecognized zones such as
+// the 45 minute offset zones in the australian outback.
 const LOCAL_TIMEZONES = [
   {
     name: 'Date Line West (UTC-12)',
