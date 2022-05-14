@@ -6,6 +6,9 @@ const { promptForMessage, promptYesNo, getUserPermLevel, getConfig } = require('
 const { performance } = require('perf_hooks');
 const Sugar = require('sugar-date');
 const { RRule } = require('rrule');
+const emojiRegex = require('emoji-regex');
+const unicodeEmojiTest = emojiRegex();
+const discordEmojiTest = new RegExp(/<a?:.+?:(\d+)>$/);
 
 function generateTimeZoneEmbed() {
   const zonesByRegion = new Collection();
@@ -105,15 +108,15 @@ class Event {
     this.id = id;
     this.channel = channel;
     this.timezone = timezone;
-    this.start = start;
-    this.duration = duration;
-    this.organizer = organizer;
+    this.start = start || null;
+    this.duration = duration || new Number();
+    this.organizer = organizer || null;
     this.attendanceOptions = attendanceOptions || new Collection();
-    this.recurrence = recurrence;
-    this.role = role;
+    this.recurrence = recurrence || null;
+    this.role = role || undefined;
     this.posts = posts || new Collection();
     this.attendees = attendees || new Collection();
-    this.description = description;
+    this.description = description || '';
   }
 }
 
@@ -616,7 +619,7 @@ async function dmEditEvent(interaction, event) {
   result = await promptForMessage(dmChannel, async (reply) => {
     // response here should be simple - 1 through 8.
     const content = reply.content.trim();
-    if (!(parseInt(content) > 0 && parseInt(content) <= 8)) {
+    if (!(Number(content) > 0 && Number(content) <= 8)) {
       switch(content.toLowerCase()) {
       case 'cancel':
       case 'abort':
@@ -627,7 +630,7 @@ async function dmEditEvent(interaction, event) {
         return 'retry';
       }
     }
-    else { return parseInt(content); }
+    else { return parseInt(Number(content)); }
   });
 
   if (!result) { editloop = false; }
@@ -665,7 +668,7 @@ async function dmEditEvent(interaction, event) {
       result = await promptForMessage(dmChannel, async (reply) => {
       // response here should be simple - 1 through 8.
         const content = reply.content.trim();
-        if (!(parseInt(content) > 0 && parseInt(content) <= 8)) {
+        if (!(Number(content) > 0 && Number(content) <= 8)) {
           switch(content.toLowerCase()) {
           case 'cancel':
           case 'abort':
@@ -680,7 +683,7 @@ async function dmEditEvent(interaction, event) {
             return 'retry';
           }
         }
-        else { return parseInt(content); }
+        else { return parseInt(Number(content)); }
       });
     }
     if (!result || result === 'save' || result === 'cancel') { editloop = false; }
@@ -708,6 +711,32 @@ function generateStartStr(date) {
   }
   const tzString = date.format('z').match(/(\+|-)(\d+)/) ? utcCode : `${date.format('z')} (${utcCode})`;
   return [`${date.format('ddd, MMM D, YYYY, HH:mm')} ${tzString}`, tzString ];
+}
+
+/**
+* Test if input is a unicode or Discord emoji mention, and if it can be posted by the bot (eg, is not animated or from a different server.)
+* @param message Discord message object
+* @param emoji string to test
+*
+* @returns postable emoji string, if emoji can be posted by the bot, false if not.
+*/
+async function validateEmoji(message, emoji) {
+  // first check if the string contains exactly one unicode emoji and nothing more.
+  if (emoji.match(unicodeEmojiTest) && emoji == emoji.match(unicodeEmojiTest)[0]) {
+    return emoji;
+  }
+  // if not, test if it's a single custom emoji that the bot can access.
+  try {
+    if (discordEmojiTest.test(emoji)) {
+      emoji = await message.client.emojis.resolveId(discordEmojiTest.exec(emoji)[1]);
+      return `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>`;
+    }
+  }
+  catch (err) {
+    console.error(err.message);
+    return false;
+  }
+  return false;
 }
 
 /**
@@ -970,8 +999,8 @@ async function dmPromptStart(dmChannel, event, mode = 'new') {
       else if (content.toLowerCase() === 'cancel') {
         return 'abort';
       }
-      else if (parseInt(content) > 0 && parseInt(content) <= TZARR.length) {
-        const idx = parseInt(content) - 1;
+      else if (Number(content) > 0 && Number(content) <= TZARR.length) {
+        const idx = parseInt(Number(content) - 1);
         newTZ = TZARR[idx];
       }
       else if(content.match(/(?:UTC|GMT)(\+|-)*(\d{1,2})?\n/)) {
@@ -1054,16 +1083,17 @@ async function dmPromptStart(dmChannel, event, mode = 'new') {
       [, tzString] = generateStartStr(event.start);
     }
     else {
-      [, tzString] = generateStartStr(moment().tz(event.timezone));
+      [, tzString] = generateStartStr(moment().tz(newTZ.locale));
     }
     dmChannel.send(`Great, please type a time and date for the event. Acceptable formats:
-      > Monday at 4pm
+      > next Monday at 4pm
       > Tomorrow at 18:00
       > Now
       > In 3 hours
       > YYYY-MM-DD 2:00 PM
       > January 12th at 6:00
-      
+      > MM/DD/YYYY 13:00
+      The date parser attempts to parse other formats, but the above are guaranteed to work.
       Notes:
       - This date will be set in the **${tzString}** time zone (but will adjust for DST if applicable).
       - Any date entered without AM/PM affixed will be treated as 24 hour time.`);
@@ -1086,19 +1116,19 @@ async function dmPromptStart(dmChannel, event, mode = 'new') {
         dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
         return 'abort';
       }
-      const parsedDate = Sugar.Date.create(`${content} UTC`);
-      console.log(parsedDate);
+      const parsedDate = Sugar.Date.create(`${content}`, 'UTC');
       if (!parsedDate) {
         dmChannel.send(`Sorry, I couldn't parse that date. Please use one of the following formats:
         Monday at 4pm
         Tomorrow at 18:00
         Now
         In 3 hours
-        YYYY-MM-DD 2:00 PM`);
+        YYYY-MM-DD 2:00 PM
+        MM/DD/YYYY 13:00`);
         return 'retry';
       }
       const newLocale = (newTZ.locale || event.timezone);
-      newStart = moment.tz(parsedDate, 'UTC').tz(newLocale, true);
+      newStart = moment(parsedDate).tz(newLocale, true);
       [startStr, tzString] = generateStartStr(newStart);
       dmChannel.send(`Great! The start date will be **${startStr}**. Is this OK?  **Y/N**`);
       YN = await promptYesNo(dmChannel, {
@@ -1244,17 +1274,11 @@ async function dmPromptRecurrence(dmChannel, event, mode = 'new') {
     case 'monthly':
       ({ step, newRuleOpts, done } = await dmRecurMonthly(dmChannel, event, newRuleOpts));
       break;
-    case 'monthlybyweekdays1':
-      ({ step, newRuleOpts, done } = await dmRecurMonthlyWeekdays1(dmChannel, event, newRuleOpts));
-      break;
-    case 'monthlybyweekdays2':
-      ({ step, newRuleOpts, done } = await dmRecurMonthlyWeekdays2(dmChannel, event, newRuleOpts));
+    case 'monthlybyweekdays':
+      ({ step, newRuleOpts, done } = await dmRecurMonthlyWeekdays(dmChannel, event, newRuleOpts));
       break;
     case 'yearly':
       ({ step, newRuleOpts, done } = await dmRecurYearly(dmChannel, event, newRuleOpts));
-      break;
-    case 'yearlytype':
-      ({ step, newRuleOpts, done } = await dmRecurYearlyType(dmChannel, event, newRuleOpts));
       break;
     case 'recurcount':
       ({ step, newRuleOpts, done } = await dmRecurCount(dmChannel, event, newRuleOpts));
@@ -1266,12 +1290,7 @@ async function dmPromptRecurrence(dmChannel, event, mode = 'new') {
       break;
     }
   }
-  if (done === true && newRuleOpts) {
-    event.recurrence = new RRule(newRuleOpts);
-    result = true;
-  }
-  else if (done === true && !newRuleOpts) {
-    event.recurrence = null;
+  if (done === true) {
     result = true;
   }
   else if (done === 'back') {
@@ -1291,14 +1310,33 @@ async function dmPromptRecurrence(dmChannel, event, mode = 'new') {
 }
 
 async function dmPromptAttOpts(dmChannel, event, mode = 'new') {
-  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  let attOptStr = '';
+  if (mode === 'edit') {
+    for(const obj of event.attendanceOptions.values()) {
+      attOptStr += `${obj.emoji} - ${obj.description}\n`;
+    }
+  }
+  event.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
+  event.attendanceOptions.set(2, { emoji: '🤔', description: 'Maybe' });
+  event.attendanceOptions.set(3, { emoji: '❎', description: 'Decline' });
+  const embed = new MessageEmbed()
+    .setTitle('Which emoji should be used for signing up?')
+    .setDescription(`**1** ✅ Accept, ❓ Maybe, ❌ Decline
+      **2** ✅ Accept, ❌ Decline
+      **3** Custom\
+      ${mode === 'edit' ? `\nCurrent attentdance options are:\n${attOptStr}` : ''}`)
+    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
+  dmChannel.send({ embeds: [embed] });
+  return [event, true];
 }
 
 async function dmPromptRole(dmChannel, event, mode = 'new') {
-  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  dmChannel.send('roles are not yet settable at this time');
+  return [event, true];
 }
 async function dmPromptAutoDelete(dmChannel, event, mode = 'new') {
-  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  dmChannel.send('roles are not yet settable at this time');
+  return [event, true];
 }
 
 async function dmRecurInit(dmChannel, event, newRuleOpts, mode) {
@@ -1319,8 +1357,8 @@ async function dmRecurInit(dmChannel, event, newRuleOpts, mode) {
   dmChannel.send({ embeds: [embed] });
   const result = await promptForMessage(dmChannel, async (reply) => {
     let content = reply.content.trim().toLowerCase();
-    if (parseInt(content)) {
-      content = parseInt(content);
+    if (Number(content)) {
+      content = Number(content);
     }
     switch(content) {
     case 1:
@@ -1344,11 +1382,11 @@ async function dmRecurInit(dmChannel, event, newRuleOpts, mode) {
     case 5:
       return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
     case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
+      return { step: 'monthlybyweekdays', newRuleOpts: newRuleOpts, done: false };
     case 7:
       return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
     case 8:
-      return { step: null, newRuleOpts: null, done: true };
+      return { step: 'verify', newRuleOpts: null, done: false };
     case 'cancel':
       return { step: null, newRuleOpts: null, done: 'abort' };
     case 'back':
@@ -1370,8 +1408,8 @@ async function dmRecurDaily(dmChannel, event, newRuleOpts, mode) {
   dmChannel.send('Ok, how many days between recurrences? (Max 366)');
   const result = await promptForMessage(dmChannel, async (reply) => {
     let content = reply.content.trim().toLowerCase();
-    if (parseInt(content)) {
-      content = parseInt(content);
+    if (Number(content)) {
+      content = Number(content);
       if (content > 367) {
         newRuleOpts = {
           dtstart: new Date(eventstart.tz('UTC', true)),
@@ -1381,7 +1419,7 @@ async function dmRecurDaily(dmChannel, event, newRuleOpts, mode) {
         return { step: 'recurcount', newRuleOpts: newRuleOpts, done: false };
       }
       else {
-        dmChannel.send(`Please reply with only a number. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+        dmChannel.send(`Sorry, the maximum length between daily recurrences is 366 days.  Please use a different type of recurrence for longer periods. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
       }
     }
     switch(content) {
@@ -1403,12 +1441,12 @@ async function dmRecurDaily(dmChannel, event, newRuleOpts, mode) {
 async function dmRecurWeekly(dmChannel, event, newRuleOpts, mode) {
   // shallow copy since .tz() modifies the original object.
   const eventstart = moment({ ...event.start });
-  dmChannel.send('Ok, how many weeks between recurrences? (Max 52)');
+  dmChannel.send('Ok, how many weeks between recurrences? (Max 80)');
   const result = await promptForMessage(dmChannel, async (reply) => {
     let content = reply.content.trim().toLowerCase();
-    if (parseInt(content)) {
-      content = parseInt(content);
-      if (content > 52) {
+    if (Number(content)) {
+      content = Number(content);
+      if (content > 80) {
         newRuleOpts = {
           dtstart: new Date(eventstart.tz('UTC', true)),
           freq: RRule.WEEKLY,
@@ -1417,7 +1455,7 @@ async function dmRecurWeekly(dmChannel, event, newRuleOpts, mode) {
         return { step: 'recurcount', newRuleOpts: newRuleOpts, done: false };
       }
       else {
-        dmChannel.send(`Please reply with only a number. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+        dmChannel.send(`Sorry, the maximum length between weekly recurrences is 80 weeks (1.5 years).  Please use monthly or annual recurrence for longer periods. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
       }
     }
     switch(content) {
@@ -1448,7 +1486,7 @@ async function dmRecurWeeklyDays(dmChannel, event, newRuleOpts, mode) {
     **5** Thursday
     **6** Friday
     **7** Saturday`)
-    .setFooter({ text: `Enter a number to select an option, or multiple numbers separated by a space. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
+    .setFooter({ text: `Enter a number to select an option, or multiple numbers separated by a space ('1 3 5' for Su/Tu/Th recurrence) . ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
   dmChannel.send({ embeds: [embed] });
   let result = await promptForMessage(dmChannel, async (reply) => {
     const content = reply.content.trim().toLowerCase();
@@ -1510,19 +1548,21 @@ async function dmRecurWeeklyDays(dmChannel, event, newRuleOpts, mode) {
   });
   // then if newRuleOpts has been set and the done var hasn't, ask for a number of weeks to recur on.
   if (result.newRuleOpts && !result.done) {
-    dmChannel.send('Ok, how many weeks between recurrences? (Max 52)');
+    dmChannel.send('Ok, how many weeks between recurrences? (Max 80)');
     result = await promptForMessage(dmChannel, async (reply) => {
       let content = reply.content.trim().toLowerCase();
-      if (parseInt(content)) {
-        content = parseInt(content);
-        if (content > 52) {
+      if (Number(content)) {
+        content = Number(content);
+        if (content > 80) {
           newRuleOpts = {
+            dtstart: new Date(eventstart.tz('UTC', true)),
+            freq: RRule.WEEKLY,
             interval: content,
           };
           return { step: 'recurcount', newRuleOpts: newRuleOpts, done: false };
         }
         else {
-          dmChannel.send(`Please reply with only a number. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+          dmChannel.send(`Sorry, the maximum length between weekly recurrences is 80 weeks (1.5 years).  Please use monthly or annual recurrence for longer periods. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
         }
       }
       switch(content) {
@@ -1549,8 +1589,8 @@ async function dmRecurMonthly(dmChannel, event, newRuleOpts, mode) {
   dmChannel.send(`Ok, the ${event.start.format('Do')} of every month. how many months between recurrences? (Max 24)\nNOTE: If this event is scheduled on the 29th, 30th, or 31st of the month, any month without these days will be skipped when calculating recurrence.`);
   const result = await promptForMessage(dmChannel, async (reply) => {
     let content = reply.content.trim().toLowerCase();
-    if (parseInt(content)) {
-      content = parseInt(content);
+    if (Number(content)) {
+      content = Number(content);
       if (content > 24) {
         newRuleOpts = {
           dtstart: new Date(eventstart.tz('UTC', true)),
@@ -1560,7 +1600,7 @@ async function dmRecurMonthly(dmChannel, event, newRuleOpts, mode) {
         return { step: 'recurcount', newRuleOpts: newRuleOpts, done: false };
       }
       else {
-        dmChannel.send(`Please reply with only a number. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+        dmChannel.send(`Sorry, the maximum length between monthly recurrences is 24 months (2 years).  Please use monthly or annual recurrence for longer periods. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
       }
     }
     switch(content) {
@@ -1579,298 +1619,210 @@ async function dmRecurMonthly(dmChannel, event, newRuleOpts, mode) {
   return result;
 }
 
-async function dmRecurMonthlyWeekdays1(dmChannel, event, newRuleOpts, mode) {
+async function dmRecurMonthlyWeekdays(dmChannel, event, newRuleOpts, mode) {
   // shallow copy since .tz() modifies the original object.
   const eventstart = moment({ ...event.start });
-  const embed = new MessageEmbed()
-    .setTitle('How often should this event recur?')
-    .setDescription(`**1** Daily
-    **2** Every *#* of days
-    **3** Weekly
-    **4** Every *#* of weeks
-    **5** Monthly on the ${event.start.format('Do')}
-    **6** Monthly by weekday (1st Monday, etc)
-    **7** Yearly
-    **8** None`)
-    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
+  const weekdayArr = [];
+  let embed = new MessageEmbed()
+    .setTitle('Which days of the week should this event recur on?')
+    .setDescription(`Pattern ('nth weekday of month) will be selected in the next step.
+      **1** Sunday
+      **2** Monday
+      **3** Tuesday
+      **4** Wednesday
+      **5** Thursday
+      **6** Friday
+      **7** Saturday`)
+    .setFooter({ text: `Enter a number to select an option, or multiple numbers separated by a space ('1 3 5' for Su/Tu/Th recurrence) . ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
   dmChannel.send({ embeds: [embed] });
-  const result = await promptForMessage(dmChannel, async (reply) => {
-    let content = reply.content.trim();
-    if (parseInt(content)) {
-      content = parseInt(content);
+  let result = await promptForMessage(dmChannel, async (reply) => {
+    const content = reply.content.trim().toLowerCase();
+    const noParseArr = [];
+    for(const str of content.split(' ')) {
+      let num;
+      if (parseInt(str)) {
+        num = parseInt(str);
+        switch(num) {
+        case 1:
+          weekdayArr.push(RRule.SU);
+          break;
+        case 2:
+          weekdayArr.push(RRule.MO);
+          break;
+        case 3:
+          weekdayArr.push(RRule.TU);
+          break;
+        case 4:
+          weekdayArr.push(RRule.WE);
+          break;
+        case 5:
+          weekdayArr.push(RRule.TH);
+          break;
+        case 6:
+          weekdayArr.push(RRule.FR);
+          break;
+        case 7:
+          weekdayArr.push(RRule.SA);
+          break;
+        default:
+          noParseArr.push(str);
+          break;
+        }
+      }
+      else {noParseArr.push(str);}
     }
-    switch(content.toLowerCase()) {
-    case 1:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.DAILY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 2:
-      return { step: 'daily', newRuleOpts: newRuleOpts, done: false };
-    case 3:
+    if (noParseArr.length === 0) {
       newRuleOpts = {
         dtstart: new Date(eventstart.tz('UTC', true)),
         freq: RRule.WEEKLY,
-        interval: 1,
+        bymonthday: [],
       };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 4:
-      return { step: 'weekly', newRuleOpts: newRuleOpts, done: false };
-    case 5:
-      return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
-    case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
-    case 7:
-      return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
-    case 8:
-      return { step: null, newRuleOpts: null, done: true };
+      return { step: null, newRuleOpts: newRuleOpts, done: false };
+    }
+    switch(content) {
     case 'cancel':
       return { step: null, newRuleOpts: null, done: 'abort' };
     case 'back':
       if (mode === 'edit') {
         return { step: null, newRuleOpts: null, done: 'back' };
       }
-    // eslint-disable-next-line no-fallthrough
+      // eslint-disable-next-line no-fallthrough
     default:
-      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+      dmChannel.send(`${noParseArr.length > 0 ? `I couldn't understand *${noParseArr.join(', ')}*! ` : '' }Enter a number to select an option, or multiple numbers separated by a space. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
       return 'retry';
     }
   });
+    // then if newRuleOpts has been set and the done var hasn't, ask for a number of weeks to recur on.
+  if (result.newRuleOpts && !result.done) {
+    const ruleArr = [];
+    const dayArr = [];
+    for (const dayRule of weekdayArr) {
+      switch(dayRule) {
+      case RRule.MO:
+        dayArr.push('Monday');
+        break;
+      case RRule.TU:
+        dayArr.push('Tuesday');
+        break;
+      case RRule.WE:
+        dayArr.push('Wednesday');
+        break;
+      case RRule.TH:
+        dayArr.push('Thursday');
+        break;
+      case RRule.FR:
+        dayArr.push('Friday');
+        break;
+      case RRule.SA:
+        dayArr.push('Saturday');
+        break;
+      case RRule.SU:
+        dayArr.push('Sunday');
+        break;
+      }
+    }
+    embed = new MessageEmbed()
+      .setTitle('Which monthly pattern should this event recur on?')
+      .setDescription(`**1** First ${dayArr.join(', ')}
+      **2** Second ${dayArr.join(', ')}
+      **3** Third ${dayArr.join(', ')}
+      **4** Fourth ${dayArr.join(', ')}
+      **5** Last ${dayArr.join(', ')}`)
+      .setFooter({ text: `Enter a number to select an option, or multiple numbers separated by a space ('1 3 5' for Su/Tu/Th recurrence) . ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
+    dmChannel.send({ embeds: [embed] });
+    result = await promptForMessage(dmChannel, async (reply) => {
+      const noParseArr = [];
+      const content = reply.content.trim();
+      for(const str of content.split(' ')) {
+        let num;
+        if (parseInt(str)) {
+          num = parseInt(str);
+          switch(num) {
+          case 1:
+          case 2:
+          case 3:
+          case 4:
+            weekdayArr.forEach(v => {
+              ruleArr.push(v.nth(num));
+            });
+            break;
+          case 5:
+            weekdayArr.forEach(v => {
+              ruleArr.push(v.nth(-1));
+            });
+            break;
+          default:
+            noParseArr.push(str);
+            break;
+          }
+        }
+        else {noParseArr.push(str);}
+      }
+      if (noParseArr.length === 0) {
+        newRuleOpts = {
+          dtstart: new Date(eventstart.tz('UTC', true)),
+          freq: RRule.MONTHLY,
+          bymonthday: [],
+          byweekday: ruleArr,
+        };
+        return { step: 'recurcount', newRuleOpts: newRuleOpts, done: false };
+      }
+      switch(content) {
+      case 'cancel':
+        return { step: null, newRuleOpts: null, done: 'abort' };
+      case 'back':
+        if (mode === 'edit') {
+          return { step: null, newRuleOpts: null, done: 'back' };
+        }
+        // eslint-disable-next-line no-fallthrough
+      default:
+        dmChannel.send(`Please reply with only a number. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+        return 'retry';
+      }
+    });
+    return result;
+  }
   return result;
 }
 
-async function dmRecurMonthlyWeekdays2(dmChannel, event, newRuleOpts, mode) {
-  // shallow copy since .tz() modifies the original object.
-  const eventstart = moment({ ...event.start });
-  const embed = new MessageEmbed()
-    .setTitle('How often should this event recur?')
-    .setDescription(`**1** Daily
-    **2** Every *#* of days
-    **3** Weekly
-    **4** Every *#* of weeks
-    **5** Monthly on the ${event.start.format('Do')}
-    **6** Monthly by weekday (1st Monday, etc)
-    **7** Yearly
-    **8** None`)
-    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
-  dmChannel.send({ embeds: [embed] });
-  const result = await promptForMessage(dmChannel, async (reply) => {
-    let content = reply.content.trim();
-    if (parseInt(content)) {
-      content = parseInt(content);
-    }
-    switch(content.toLowerCase()) {
-    case 1:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.DAILY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 2:
-      return { step: 'daily', newRuleOpts: newRuleOpts, done: false };
-    case 3:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.WEEKLY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 4:
-      return { step: 'weekly', newRuleOpts: newRuleOpts, done: false };
-    case 5:
-      return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
-    case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
-    case 7:
-      return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
-    case 8:
-      return { step: null, newRuleOpts: null, done: true };
-    case 'cancel':
-      return { step: null, newRuleOpts: null, done: 'abort' };
-    case 'back':
-      if (mode === 'edit') {
-        return { step: null, newRuleOpts: null, done: 'back' };
-      }
-    // eslint-disable-next-line no-fallthrough
-    default:
-      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
-      return 'retry';
-    }
-  });
-  return result;
-}
+
 async function dmRecurYearly(dmChannel, event, newRuleOpts, mode) {
   // shallow copy since .tz() modifies the original object.
   const eventstart = moment({ ...event.start });
-  const embed = new MessageEmbed()
-    .setTitle('How often should this event recur?')
-    .setDescription(`**1** Daily
-    **2** Every *#* of days
-    **3** Weekly
-    **4** Every *#* of weeks
-    **5** Monthly on the ${event.start.format('Do')}
-    **6** Monthly by weekday (1st Monday, etc)
-    **7** Yearly
-    **8** None`)
-    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
-  dmChannel.send({ embeds: [embed] });
-  const result = await promptForMessage(dmChannel, async (reply) => {
-    let content = reply.content.trim();
-    if (parseInt(content)) {
-      content = parseInt(content);
-    }
-    switch(content.toLowerCase()) {
-    case 1:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.DAILY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 2:
-      return { step: 'daily', newRuleOpts: newRuleOpts, done: false };
-    case 3:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.WEEKLY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 4:
-      return { step: 'weekly', newRuleOpts: newRuleOpts, done: false };
-    case 5:
-      return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
-    case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
-    case 7:
-      return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
-    case 8:
-      return { step: null, newRuleOpts: null, done: true };
-    case 'cancel':
-      return { step: null, newRuleOpts: null, done: 'abort' };
-    case 'back':
-      if (mode === 'edit') {
-        return { step: null, newRuleOpts: null, done: 'back' };
-      }
-    // eslint-disable-next-line no-fallthrough
-    default:
-      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
-      return 'retry';
-    }
-  });
-  return result;
+  dmChannel.send(`Ok, every year on ${eventstart.format('MMMM Do')}.`);
+  newRuleOpts = {
+    dtstart: new Date(eventstart.tz('UTC', true)),
+    freq: RRule.YEARLY,
+    interval: 1,
+  };
+  return { step: 'recurcount', newRuleOpts: newRuleOpts, done: false };
 }
-async function dmRecurYearlyType(dmChannel, event, newRuleOpts, mode) {
-  // shallow copy since .tz() modifies the original object.
-  const eventstart = moment({ ...event.start });
-  const embed = new MessageEmbed()
-    .setTitle('How often should this event recur?')
-    .setDescription(`**1** Daily
-    **2** Every *#* of days
-    **3** Weekly
-    **4** Every *#* of weeks
-    **5** Monthly on the ${event.start.format('Do')}
-    **6** Monthly by weekday (1st Monday, etc)
-    **7** Yearly
-    **8** None`)
-    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
-  dmChannel.send({ embeds: [embed] });
-  const result = await promptForMessage(dmChannel, async (reply) => {
-    let content = reply.content.trim();
-    if (parseInt(content)) {
-      content = parseInt(content);
-    }
-    switch(content.toLowerCase()) {
-    case 1:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.DAILY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 2:
-      return { step: 'daily', newRuleOpts: newRuleOpts, done: false };
-    case 3:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.WEEKLY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 4:
-      return { step: 'weekly', newRuleOpts: newRuleOpts, done: false };
-    case 5:
-      return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
-    case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
-    case 7:
-      return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
-    case 8:
-      return { step: null, newRuleOpts: null, done: true };
-    case 'cancel':
-      return { step: null, newRuleOpts: null, done: 'abort' };
-    case 'back':
-      if (mode === 'edit') {
-        return { step: null, newRuleOpts: null, done: 'back' };
-      }
-    // eslint-disable-next-line no-fallthrough
-    default:
-      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
-      return 'retry';
-    }
-  });
-  return result;
-}
+
 async function dmRecurCount(dmChannel, event, newRuleOpts, mode) {
-  // shallow copy since .tz() modifies the original object.
-  const eventstart = moment({ ...event.start });
-  const embed = new MessageEmbed()
-    .setTitle('How often should this event recur?')
-    .setDescription(`**1** Daily
-    **2** Every *#* of days
-    **3** Weekly
-    **4** Every *#* of weeks
-    **5** Monthly on the ${event.start.format('Do')}
-    **6** Monthly by weekday (1st Monday, etc)
-    **7** Yearly
-    **8** None`)
-    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
-  dmChannel.send({ embeds: [embed] });
+  const tempRule = new RRule(newRuleOpts);
+  dmChannel.send(`Great. Your rule is currently **${tempRule.toText}**.
+  How many times would you like it to recur?
+  You may answer either with a plain number (1-50), or a date/time.`);
   const result = await promptForMessage(dmChannel, async (reply) => {
-    let content = reply.content.trim();
-    if (parseInt(content)) {
-      content = parseInt(content);
+    const content = reply.content.trim();
+    if (Number(content)) {
+      const num = parseInt(Number(content));
+      if (num > 0 && num <= 50) {
+        newRuleOpts.count = num;
+        return { step: 'verify', newRuleOpts: newRuleOpts, done: false };
+      }
+      else {
+        dmChannel.send(`Sorry, I interpreted that as ${num}; maximum recurrence count is 50.\
+        You can always revisit this and modify your recurrence when the final recurrence is closer.`);
+        return 'retry';
+      }
+    }
+    const parsedDate = Sugar.Date.create(`${content}`, 'UTC');
+    if (parsedDate) {
+      newRuleOpts.until = new Date(parsedDate);
+      return { step: 'verify', newRuleOpts: newRuleOpts, done: false };
     }
     switch(content.toLowerCase()) {
-    case 1:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.DAILY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 2:
-      return { step: 'daily', newRuleOpts: newRuleOpts, done: false };
-    case 3:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.WEEKLY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 4:
-      return { step: 'weekly', newRuleOpts: newRuleOpts, done: false };
-    case 5:
-      return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
-    case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
-    case 7:
-      return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
-    case 8:
-      return { step: null, newRuleOpts: null, done: true };
     case 'cancel':
       return { step: null, newRuleOpts: null, done: 'abort' };
     case 'back':
@@ -1879,72 +1831,41 @@ async function dmRecurCount(dmChannel, event, newRuleOpts, mode) {
       }
     // eslint-disable-next-line no-fallthrough
     default:
-      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+      dmChannel.send(`Sorry, I couldn't parse that as a number or a date. Acceptable date formats:
+      Next Monday
+      Tomorrow
+      YYYY-MM-DD
+      MM/DD/YYYY
+      et cetera. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
       return 'retry';
     }
   });
   return result;
 }
 async function dmRecurVerify(dmChannel, event, newRuleOpts, mode) {
+  let tempRule = null;
+  if (newRuleOpts) {
+    tempRule = new RRule(newRuleOpts);
+  }
   // shallow copy since .tz() modifies the original object.
-  const eventstart = moment({ ...event.start });
-  const embed = new MessageEmbed()
-    .setTitle('How often should this event recur?')
-    .setDescription(`**1** Daily
-    **2** Every *#* of days
-    **3** Weekly
-    **4** Every *#* of weeks
-    **5** Monthly on the ${event.start.format('Do')}
-    **6** Monthly by weekday (1st Monday, etc)
-    **7** Yearly
-    **8** None`)
-    .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
-  dmChannel.send({ embeds: [embed] });
-  const result = await promptForMessage(dmChannel, async (reply) => {
-    let content = reply.content.trim();
-    if (parseInt(content)) {
-      content = parseInt(content);
-    }
-    switch(content.toLowerCase()) {
-    case 1:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.DAILY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 2:
-      return { step: 'daily', newRuleOpts: newRuleOpts, done: false };
-    case 3:
-      newRuleOpts = {
-        dtstart: new Date(eventstart.tz('UTC', true)),
-        freq: RRule.WEEKLY,
-        interval: 1,
-      };
-      return { step: 'recurcount', newRuleOpts: newRuleOpts, done: true };
-    case 4:
-      return { step: 'weekly', newRuleOpts: newRuleOpts, done: false };
-    case 5:
-      return { step: 'monthly', newRuleOpts: newRuleOpts, done: false };
-    case 6:
-      return { step: 'monthlybyweekday1', newRuleOpts: newRuleOpts, done: false };
-    case 7:
-      return { step: 'yearly', newRuleOpts: newRuleOpts, done: false };
-    case 8:
-      return { step: null, newRuleOpts: null, done: true };
-    case 'cancel':
-      return { step: null, newRuleOpts: null, done: 'abort' };
-    case 'back':
-      if (mode === 'edit') {
-        return { step: null, newRuleOpts: null, done: 'back' };
-      }
-    // eslint-disable-next-line no-fallthrough
-    default:
-      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
-      return 'retry';
-    }
+  dmChannel.send(`Great! Your event recurrence will be **${tempRule ? tempRule.toText() : 'No Recurrence'}**. Is this OK?  **Y/N**`);
+  const YN = await promptYesNo(dmChannel, {
+    messages: {
+      yes: 'Excellent. Recurrence set.',
+      cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+      invalid: `Reply not recognized! Please answer Y or N. Is **${tempRule ? tempRule.toText() : 'No Recurrence'}** acceptable? **Y/N**`,
+    },
   });
-  return result;
+  if (YN !== false) {
+    switch (YN.answer) {
+    case true:
+      event.recurrence = tempRule;
+      return { step: null, newRuleOpts: null, done: true };
+    case false:
+      return { step: 'init', newRuleOpts: null, done: false };
+    }
+  }
+  else { return { step: null, newRuleOpts: null, done: 'abort' }; }
 }
 
 /**
@@ -2076,19 +1997,209 @@ async function generatePost(event) {
 }
 
 async function createEvent(interaction) {
-  interaction.reply('boobs');
-  const newEvent = new Event();
-  newEvent.id = (Date.now().toString(10) + (Math.random() * 9999).toFixed(0).toString(10).padStart(4, '0'));
-  newEvent.channel = interaction.options.getChannel('channel');
+  interaction.deferReply();
+  const dmChannel = await interaction.user.createDM();
+  let newEvent = new Event();
   newEvent.organizer = interaction.member;
-  newEvent.start = moment(interaction.options.getString('start'), 'x').tz('America/Los_Angeles');
-  newEvent.name = interaction.options.getString('name');
-  newEvent.timezone = 'America/Los_Angeles';
-  newEvent.recurrence = null;
-  newEvent.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
-  newEvent.attendanceOptions.set(2, { emoji: '🤔', description: 'Maybe' });
-  newEvent.attendanceOptions.set(3, { emoji: '❎', description: 'Decline' });
-  const newPost = await postEventEmbed(newEvent, newEvent.channel);
+  newEvent.id = (Date.now().toString(10) + (Math.random() * 9999).toFixed(0).toString(10).padStart(4, '0'));
+  newEvent.channel = interaction.options.getChannel('channel') || interaction.channel;
+  try {
+    await dmChannel.send({ content: 'OK! Starting event creation.' });
+  }
+  catch(err) {
+    if (err.message == 'Cannot send messages to this user') {
+      interaction.followUp({ content: 'Sorry, I can\'t seem to DM you. Please make sure that your privacy settings allow you to recieve DMs from this bot.', ephemeral: true });
+      return false;
+    }
+    else {
+      interaction.followUp({ content: 'There was an error sending you a DM! Please check your privacy settings.  If your settings allow you to recieve DMs from this bot, check the console for full error review.', ephemeral:true });
+      console.log(err);
+      return false;
+    }
+  }
+  let result;
+  let i = 1;
+  let createLoop = true;
+  let editEmbed;
+  let editloop = false;
+  while (createLoop) {
+    switch(i) {
+    case 1:
+      [newEvent, result] = await dmPromptEventName(dmChannel, newEvent, 'new');
+      break;
+    case 2:
+      [newEvent, result] = await dmPromptEventDescription(dmChannel, newEvent, 'new');
+      break;
+    case 3:
+      [newEvent, result] = await dmPromptStart(dmChannel, newEvent, 'new');
+      break;
+    case 4:
+      [newEvent, result] = await dmPromptDuration(dmChannel, newEvent, 'new');
+      break;
+    case 5:
+      [newEvent, result] = await dmPromptRecurrence(dmChannel, newEvent, 'new');
+      break;
+    case 6:
+      [newEvent, result] = await dmPromptAttOpts(dmChannel, newEvent, 'new');
+      break;
+    case 7:
+      [newEvent, result] = await dmPromptRole(dmChannel, newEvent, 'new');
+      break;
+    case 8:
+      [newEvent, result] = await dmPromptAutoDelete(dmChannel, newEvent, 'new');
+      break;
+    case 9:
+      // at this point we should have a finished event.
+      if (result && result !== 'cancel') {
+        const { embeds } = await generatePost(newEvent);
+        await dmChannel.send({ content: 'OK, done. Here is your new event. Does this look good? **Y/N** (You will be given an opportunity to edit the event if you answer no.) \n***Your edits will not be saved until you answer \'Yes\'***', embeds: embeds });
+        let YN = await promptYesNo(dmChannel, {
+          messages: {
+            no: 'OK. Would you like to edit the event? **Y** to edit, **N** to cancel',
+            cancel: 'Event creation cancelled. Please perform the command again to restart this process.',
+            invalid: 'Reply not recognized! Please answer Y or N. Does the above event look acceptable? **Y/N**.',
+          },
+        });
+        if (YN !== false) {
+          switch (YN.answer) {
+          case true:
+            createLoop = false;
+            result = 'save';
+            break;
+          case false:
+            // if they say no to the previous, we asked if they'd like to edit the event.
+            YN = await promptYesNo(dmChannel, {
+              messages: {
+                no: 'Event creation cancelled. Please perform the command again to restart this process.',
+                cancel: 'Event creation cancelled. Please perform the command again to restart this process.',
+                invalid: 'Reply not recognized! Please answer Y or N. Would you like to edit the event? **Y/N**.',
+              },
+            });
+            if (!YN || !YN.answer) {
+              interaction.followUp({ content: 'Event editing cancelled!', ephemeral: true });
+              return false;
+            }
+            editEmbed = generateEditEmbed(newEvent);
+            try {
+              await dmChannel.send({ content: 'You may type \'cancel\' at any point in this process to abort without saving your changes.', embeds: [editEmbed] });
+            }
+            catch(err) {
+              if (err.message == 'Cannot send messages to this user') {
+                interaction.followUp({ content: 'Sorry, I can\'t seem to DM you. Please make sure that your privacy settings allow you to recieve DMs from this bot.', ephemeral: true });
+                return false;
+              }
+              else {
+                interaction.followUp({ content: 'There was an error sending you a DM! Please check your privacy settings.  If your settings allow you to recieve DMs from this bot, check the console for full error review.', ephemeral:true });
+                console.log(err);
+                return false;
+              }
+            }
+            result = await promptForMessage(dmChannel, async (reply) => {
+              // response here should be simple - 1 through 8.
+              const content = reply.content.trim();
+              if (!(Number(content) > 0 && Number(content) <= 8)) {
+                switch(content.toLowerCase()) {
+                case 'cancel':
+                case 'abort':
+                  dmChannel.send('Event creation cancelled. Please edit the event again to restart the process.');
+                  return 'abort';
+                default:
+                  dmChannel.send('I\'m sorry, I didn\'t understand that.  Please only respond with a number from 1 to 8, or \'cancel\' to cancel.');
+                  return 'retry';
+                }
+              }
+              else { return parseInt(Number(content)); }
+            });
+
+            if (!result) { editloop = false; }
+
+            while (editloop) {
+              switch (result) {
+              case 1:
+                [newEvent, result] = await dmPromptEventName(dmChannel, newEvent, 'edit');
+                break;
+              case 2:
+                [newEvent, result] = await dmPromptEventDescription(dmChannel, newEvent, 'edit');
+                break;
+              case 3:
+                [newEvent, result] = await dmPromptStart(dmChannel, newEvent, 'edit');
+                break;
+              case 4:
+                [newEvent, result] = await dmPromptDuration(dmChannel, newEvent, 'edit');
+                break;
+              case 5:
+                [newEvent, result] = await dmPromptRecurrence(dmChannel, newEvent, 'edit');
+                break;
+              case 6:
+                [newEvent, result] = await dmPromptAttOpts(dmChannel, newEvent, 'edit');
+                break;
+              case 7:
+                [newEvent, result] = await dmPromptRole(dmChannel, newEvent, 'edit');
+                break;
+              case 8:
+                [newEvent, result] = await dmPromptAutoDelete(dmChannel, newEvent, 'edit');
+                break;
+              }
+              if (result && result !== 'cancel') {
+                editEmbed = generateEditEmbed(newEvent);
+                await dmChannel.send({ content: 'OK, done. Here is your new event. Please select an item, or type \'done\' to save your edits. \n***Your edits will not be saved until you type \'done\'***', embeds: [editEmbed] });
+                result = await promptForMessage(dmChannel, async (reply) => {
+                  // response here should be simple - 1 through 8.
+                  const content = reply.content.trim();
+                  if (!(Number(content) > 0 && Number(content) <= 8)) {
+                    switch(content.toLowerCase()) {
+                    case 'cancel':
+                    case 'abort':
+                      dmChannel.send('Event creation cancelled. Please edit the event again to restart the process.');
+                      return 'abort';
+                    case 'done':
+                    case 'save':
+                      dmChannel.send('Great! I will save your event and post it.');
+                      return 'save';
+                    default:
+                      dmChannel.send('I\'m sorry, I didn\'t understand that.  Please only respond with a number from 1 to 8, or \'cancel\' to cancel.');
+                      return 'retry';
+                    }
+                  }
+                  else { return parseInt(Number(content)); }
+                });
+              }
+              if (!result || result === 'save' || result === 'cancel') { editloop = false; }
+            }
+            if (result === 'save') { newEvent; }
+            else {
+              interaction.followUp({ content: 'Event editing cancelled!', ephemeral: true });
+              return false;
+            }
+          }
+        }
+        else {
+          interaction.followUp({ content: 'Event editing cancelled!', ephemeral: true });
+          return false;
+        }
+      }
+      break;
+    }
+    i++;
+  }
+  const config = getConfig(interaction.client, interaction.guildId);
+  let eventInfoChannel;
+  try {eventInfoChannel = await interaction.client.channels.fetch(config.eventInfoChannel);}
+  catch {eventInfoChannel = null;}
+  let newPost;
+  if (eventInfoChannel && eventInfoChannel.id != newEvent.channel.id) {
+    const newEvtChnPost = await postEventEmbed(newEvent, eventInfoChannel);
+    newEvent.posts.set(newEvtChnPost.id, newEvtChnPost);
+  }
+
+  if (newEvent.channel.id == interaction.channel.id) {
+    const msgPayload = await generatePost(newEvent);
+    newPost = await interaction.editReply(msgPayload);
+  }
+  else {
+    newPost = await postEventEmbed(newEvent, newEvent.channel);
+    await interaction.editReply({ content: `Your event has been posted in ${newEvent.channel.id}`, ephemeral: true });
+  }
   newEvent.posts.set(newPost.id, newPost);
   await eventManager.set(newEvent);
 }
