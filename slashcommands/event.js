@@ -109,7 +109,7 @@ class Event {
     this.channel = channel;
     this.timezone = timezone;
     this.start = start || null;
-    this.duration = duration || new Number();
+    this.duration = Number(duration || 0);
     this.organizer = organizer || null;
     this.attendanceOptions = attendanceOptions || new Collection();
     this.recurrence = recurrence || null;
@@ -161,7 +161,7 @@ class EventManager {
           let role = null;
           if (eventRole) { role = await guild.roles.fetch(eventRole.role_id); }
           if (role) { role.autoDelete = eventRole.autoDelete; }
-          const recurrence = e.recurrence || null;
+          const recurrence = e.recurrence ? RRule.fromString(e.recurrence) : null;
           const eventPosts = await this.botdb.all('SELECT * FROM event_posts WHERE event_id = ?', e.event_id);
           const posts = new Collection();
           for(const p of eventPosts) {
@@ -185,7 +185,7 @@ class EventManager {
             };
             attendanceOptions.set(o.listindex, attobj);
           }
-          const event = new Event(e.name, e.event_id, channel, e.timezone, moment.tz(e.start_time, e.timezone), e.duration, organizer, attendanceOptions, RRule.fromString(recurrence), role, posts, attendees, e.description);
+          const event = new Event(e.name, e.event_id, channel, e.timezone, moment.tz(e.start_time, e.timezone), e.duration, organizer, attendanceOptions, recurrence, role, posts, attendees, e.description);
           guildData.events.set(e.event_id, event);
         }));
         // TODO finished role handling
@@ -298,7 +298,6 @@ class EventManager {
         catch {eventInfoChannel = null;}
         // iterate through events and handle due and upcoming events
         for (const [eventid, event] of events) {
-          // console.log(event.start);
           if (event.start.isSameOrBefore(now)) {
             let eventFinished = false;
             if (event.duration > 0) {
@@ -330,7 +329,7 @@ class EventManager {
               // if the event is completed and has no further recurrences, pass it to eventsPendingPrune so it can be cleaned up.
               // shallow copy start since .tz() modifies the original object.
               const modStart = moment({ ...event.start });
-              const nextOccurence = event.recurrence.after(new Date(modStart.tz('UTC', true)));
+              const nextOccurence = event.recurrence ? event.recurrence.after(new Date(modStart.tz('UTC', true))) : null;
               if (!event.recurrence || !nextOccurence) {
                 this.eventsPendingPrune.set(eventid, event);
                 if (event.role && event.role.autoDelete) {
@@ -887,7 +886,7 @@ async function dmPromptEventName(dmChannel, event, mode = 'new') {
  * @returns {Array[Event, Boolean]} [event object, bool will only be false if aborted]
  */
 async function dmPromptEventDescription(dmChannel, event, mode = 'new') {
-  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event.`);
+  dmChannel.send(`${event.description.length > 0 ? `Current event description is **${event.description}**.` : ''} Please provide a description for your event; you can also type 'skip' or 'none' to have no description.`);
   const result = await promptForMessage(dmChannel, async (reply) => {
     const content = reply.content.trim();
     if (content.length >= 1000) {
@@ -903,14 +902,9 @@ async function dmPromptEventDescription(dmChannel, event, mode = 'new') {
       }
       else { return true; }
     case 'skip':
-      if (mode === 'edit') {
-        dmChannel.send('Sorry, \'skip\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
-        return 'retry';
-      }
-      else {
-        event.description = undefined;
-        return true;
-      }
+    case 'none':
+      event.description = undefined;
+      return true;
     case 'cancel':
     case 'abort':
       dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
@@ -927,7 +921,7 @@ async function dmPromptEventDescription(dmChannel, event, mode = 'new') {
       if (YN !== false) {
         switch (YN.answer) {
         case true:
-          event.name = content;
+          event.description = content;
           return event;
         case false:
           return 'retry';
@@ -1949,7 +1943,7 @@ async function generatePost(event) {
   const embed = new MessageEmbed()
     .setTitle(event.name)
     .addFields({ name: 'Time', value: `${discordMomentFullDate(event.start)}${eventend ? `- ${discordMomentShortTime(eventend)}\n(${formatDurationStr(event.duration)})` : ''} ⌚${discordMomentRelativeDate(event.start)}` })
-    .setFooter({ text: `Created by ${event.organizer.displayName}`, iconURL: event.organizer.displayAvatarURL() });
+    .setFooter({ text: `Created by ${event.organizer.displayName} · ${formatRecurrenceStr(event)}`, iconURL: event.organizer.displayAvatarURL() });
   for (const [, opts] of event.attendanceOptions) {
     const memberArr = attendeeMap.get(opts.emoji);
     const fieldVal = [];
