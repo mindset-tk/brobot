@@ -4,7 +4,7 @@
 // own entry (EG, Moscow shares a time zone with Turkey, but has
 // its own abbreviation in the moment-timezone database.)
 // therefore this arr should have every extant offset and abbr
-// with exception of Israel and certain unrecognized zones such as
+// with exception of certain unrecognized zones such as
 // the 45 minute offset zones in the australian outback.
 const LOCAL_TIMEZONES = [
   {
