@@ -6,6 +6,8 @@
 // therefore this arr should have every extant offset and abbr
 // with exception of certain unrecognized zones such as
 // the 45 minute offset zones in the australian outback.
+// offset is only used for sorting and not used otherwise as
+// offsets vary with daylight savings.
 const LOCAL_TIMEZONES = [
   {
     name: 'Date Line West (UTC-12)',
