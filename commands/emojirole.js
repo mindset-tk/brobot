@@ -443,7 +443,7 @@ async function addRoleToPost(message, args, botdb) {
   const emoji = args.shift();
   const cleanEmoji = await validateEmoji(message, emoji);
   if(!cleanEmoji) {
-    return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from this server (cross-server emoji cannot be used by bots.)`);
+    return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from any server that this bot is present in.`);
   }
 
   // get role data
@@ -492,7 +492,7 @@ async function removeRoleFromPost(message, args, botdb) {
   const emoji = args.shift();
   const cleanEmoji = await validateEmoji(message, emoji);
   if(!cleanEmoji) {
-    return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from this server (cross-server emoji cannot be used by bots.)`);
+    return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from any server that this bot is present in.`);
   }
 
   const overflow = args.shift();
