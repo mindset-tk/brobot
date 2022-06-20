@@ -138,6 +138,7 @@ client.on('ready', async () => {
   console.log('Ready!');
   register.onReady(client);
   // if (config.currentActivity) { client.user.setActivity(config.currentActivity.Name, { type: config.currentActivity.Type }); }
+  client.user.setActivity('Wrestlemania', { type: 'WATCHING' });
   // counting.OnReady(config, client);
   // starboard.onReady(botdb);
   // wait 1000ms without holding up the rest of the script. This way we can ensure recieving all guild invite info.
