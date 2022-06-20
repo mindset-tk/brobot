@@ -530,11 +530,20 @@ async function deleteEventButton(interaction) {
     // edit every post except for the interaction post;
     // this is to avoid a discord API error about unhandled interactions.
     if (message.id != interaction.message.id) {
-      promiseArr.push(message.edit(msgPayload));
+      if (message.channel.id == config.eventInfoChannelId) {
+        message.delete();
+      }
+      else {
+        promiseArr.push(message.edit(msgPayload));
+      }
     }
   }
-  // ...and then edit the original reaction.
+  // ...and then edit the original interaction.
   promiseArr.push(interaction.editReply(msgPayload));
+  // finally, delete from the upcoming event info channel.
+  if (interaction.channel.id == config.eventInfoChannelId) {
+    interaction.message.delete();
+  }
   promiseArr.push(eventManager.delete(event));
   await Promise.all(promiseArr);
   return;
@@ -2217,7 +2226,7 @@ async function createEvent(interaction) {
   }
   const config = getConfig(interaction.client, interaction.guildId);
   let eventInfoChannel;
-  try {eventInfoChannel = await interaction.client.channels.fetch(config.eventInfoChannel);}
+  try {eventInfoChannel = await interaction.client.channels.fetch(config.eventInfoChannelId);}
   catch {eventInfoChannel = null;}
   let newPost;
   if (eventInfoChannel && eventInfoChannel.id != newEvent.channel.id) {
