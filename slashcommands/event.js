@@ -1310,18 +1310,57 @@ async function dmPromptAttOpts(dmChannel, event, mode = 'new') {
       attOptStr += `${obj.emoji} - ${obj.description}\n`;
     }
   }
-  event.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
-  event.attendanceOptions.set(2, { emoji: '🤔', description: 'Maybe' });
-  event.attendanceOptions.set(3, { emoji: '❎', description: 'Decline' });
   const embed = new MessageEmbed()
     .setTitle('Which emoji should be used for signing up?')
-    .setDescription(`**1** ✅ Accept, ❓ Maybe, ❌ Decline
-      **2** ✅ Accept, ❌ Decline
-      **3** Custom\
-      ${mode === 'edit' ? `\nCurrent attentdance options are:\n${attOptStr}` : ''}`)
+    .setDescription(`**1.** ✅ Accept, ❓ Maybe, ❌ Decline
+      **2.** ✅ Accept, ❌ Decline
+      **3.** Custom
+      ${mode === 'edit' ? `Current attentdance options are:\n${attOptStr}` : ''}`)
     .setFooter({ text: `Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'` });
   dmChannel.send({ embeds: [embed] });
-  return [event, true];
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    let content = reply.content.trim().toLowerCase();
+    if (Number(content)) {
+      content = Number(content);
+    }
+    switch(content) {
+    case 1:
+      event.attendanceOptions.clear();
+      event.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
+      event.attendanceOptions.set(2, { emoji: '❓', description: 'Maybe' });
+      event.attendanceOptions.set(3, { emoji: '❌', description: 'Decline' });
+      return true;
+    case 2:
+      event.attendanceOptions.clear();
+      event.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
+      event.attendanceOptions.set(3, { emoji: '❌', description: 'Decline' });
+      break;
+    // not currently implemented.
+    // case 3:
+    //  return await dmCustomAttOpt(dmChannel, event);
+    case 'cancel':
+    case 'abort':
+      return 'abort';
+    case 'back':
+      if (mode === 'edit') {
+        return 'back';
+      }
+      // eslint-disable-next-line no-fallthrough
+    default:
+      dmChannel.send(`Enter a number to select an option. ${mode === 'edit' ? 'To return to the edit screen type \'back\'.' : ''} To exit, type 'cancel'`);
+      return 'retry';
+    }
+  });
+  if (!result) {
+    return [event, 'cancel'];
+  }
+  else {
+    return [event, true];
+  }
+}
+
+async function dmCustomAttOpt(dmChannel, event) {
+  dmChannel.send('Ok, a custom set of emoji. I can include up to 3');
 }
 
 async function dmPromptRole(dmChannel, event, mode = 'new') {
@@ -1780,7 +1819,7 @@ async function dmRecurMonthlyWeekdays(dmChannel, event, newRuleOpts, mode) {
 }
 
 
-async function dmRecurYearly(dmChannel, event, newRuleOpts, mode) {
+async function dmRecurYearly(dmChannel, event, newRuleOpts) {
   // shallow copy since .tz() modifies the original object.
   const eventstart = moment({ ...event.start });
   dmChannel.send(`Ok, every year on ${eventstart.format('MMMM Do')}.`);
@@ -2199,6 +2238,8 @@ async function createEvent(interaction) {
 }
 
 module.exports = {
+  guildOnly: true,
+  staffOnly: false,
   data: new SlashCommandBuilder()
     .setName('event')
     .setDescription('Create or manage events')
