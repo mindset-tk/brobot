@@ -8,7 +8,6 @@ const path = require('path');
 const slashPath = path.resolve('./slashcommands');
 
 async function registerSlashes(client) {
-  console.log(client);
   const commands = [];
   const commandFiles = fs.readdirSync(slashPath).filter(file => file.endsWith('.js'));
 
