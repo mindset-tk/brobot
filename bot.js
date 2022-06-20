@@ -7,6 +7,7 @@ const { open } = require('sqlite');
 const dbpath = ('./db/');
 const Discord = require('discord.js');
 const myIntents = new Discord.Intents(32767);
+const register = require('./register.js');
 // const counting = require('./counting.js'); TODO fix counting
 
 
@@ -135,6 +136,7 @@ const vanityInvites = {};
 // when the client is ready, run this code.
 client.on('ready', async () => {
   console.log('Ready!');
+  register.onReady(client);
   // if (config.currentActivity) { client.user.setActivity(config.currentActivity.Name, { type: config.currentActivity.Type }); }
   // counting.OnReady(config, client);
   // starboard.onReady(botdb);
@@ -202,6 +204,9 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isCommand()) return;
   const command = client.slashCommands.get(interaction.commandName);
   if (!command) return;
+  if (command.guildOnly && !interaction.guild) {
+    return await interaction.reply({ content: 'Sorry, this command can only be run from in a server!', ephemeral: true });
+  }
   try {
     await command.execute(interaction, botdb);
   }
