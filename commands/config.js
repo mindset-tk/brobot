@@ -32,8 +32,8 @@ const configurableProps = [{ varName:'prefix', shortDesc:'Command Prefix', varTy
   { varName:'voiceTextChannelIds', shortDesc:'Text channel(s) for voice', varType:'channelArray', default: [], page:'specialChannels' },
   // { varName:'voiceChamberDefaultSizes', shortDesc:'Default limits for size-limited channels', varType:'voiceChamberSettings', default: '', page:'specialChannels' },
   // { varName:'voiceChamberSnapbackDelay', shortDesc:'Minutes before configured voice channels revert once empty', varType:'integer', default: '', page:'specialChannels' },
-  { varName:'pinMode', shortDesc:'React pinning mode', varType:'pinmode', default: 'count', page:'reactFunctions' },
-  { varName:'pinsToPin', shortDesc:'Number of pin reacts to pin a message', varType:'integer', default: 0, page:'reactFunctions' },
+  { varName:'pinMode', shortDesc:'React pinning mode', varType:'pinMode', default: 'count', page:'reactFunctions' },
+  { varName:'pinsToPin', shortDesc:'Number of pin reacts to pin a message', varType:'integer', default: 5, page:'reactFunctions' },
   { varName:'pinIgnoreChannels', shortDesc:'Channel(s) to ignore for pinning', varType:'channelArray', default: [], page:'reactFunctions' },
   { varName:'bookmarkEnabled', shortDesc:'Toggle bookmark', varType:'boolean', default: true, page:'reactFunctions' },
   // { varName:'botChannelId', shortDesc:'Bot-specific message channel', varType:'channel', default: '' },
@@ -266,6 +266,9 @@ async function generateEmbed(message, config, client, pageNo = 1) {
         const chanName = await getChannelName(config[prop.varName], client);
         fieldValue += `${config[prop.varName] ? `#${chanName}` : 'NOT SET' }`;
       }
+      else if (prop.varType == 'integer') {
+        fieldValue += (typeof config[prop.varName] === 'number') ? parseInt(config[prop.varName]) : 'NOT SET';
+      }
       else {fieldValue += `${config[prop.varName].length > 0 ? `${config[prop.varName]}` : 'NOT SET' }`;}
       configEmbed.addField(fieldTitle, fieldValue);
       i++;
@@ -417,7 +420,7 @@ async function configDM(interaction, propToUpdate) {
       msgContent += 'Reaction pinning is currently off. 📌 reactions will not cause a message to be pinned.';
       break;
     }
-    msgContent += `\nPlease reply with a new pinning mode. Acceptable inputs are 'count','accept', or 'off'.
+    msgContent += `\nPlease reply with a new pinning mode. Acceptable inputs are 'count','toggle', or 'off'.
     If you wish to define the number of pins for count mode, add the number with a space, eg. 'count 5'.`;
     break;
   case 'voiceChamberSettings':
@@ -513,7 +516,34 @@ async function configDM(interaction, propToUpdate) {
     case 'inviteCodesArray':
       break;
     case 'pinMode':
-      break;
+      switch (reply.content.trim().toLowerCase().split(' ')[0]) {
+      case 'count':
+        config.pinMode = 'count';
+        if (reply.content.trim().toLowerCase().split(' ')[1] && parseInt(reply.content.trim().toLowerCase().split(' ')[1])) {
+          config.pinsToPin = parseInt(reply.content.trim().toLowerCase().split(' ')[1]);
+          dmChannel.send(`Ok. Messages will be pinned after ${config.pinsToPin} pin reacts are accrued.`);
+        }
+        else {
+          dmChannel.send(`Ok. Messages will be pinned after ${config.pinsToPin} 📌 reacts are accrued.\
+          This was the value already set, or the default for this setting.\
+          Please use the config embed again to adjust if needed.`);
+        }
+        return true;
+      case 'toggle':
+        config.pinMode = 'toggle';
+        dmChannel.send('Ok. Pins will now be toggled by adding/removing a 📌 react. Note that this means that anyone who can react to a message can add/remove it from the pins.');
+        return true;
+      case 'off':
+        config.pinMode = 'off';
+        return true;
+      case 'cancel':
+        return 'abort';
+      case false:
+        return 'retry';
+      default:
+        dmChannel.send(`Reply not recognized! Please answer Y or N. Should ${propToUpdate.shortDesc} be set to ${config[propToUpdate.varName] ? 'OFF' : 'ON'}?`);
+        return 'retry';
+      }
     case 'voiceChamberSettings':
       // TODO: document and write this segment.
       break;
