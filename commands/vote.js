@@ -243,9 +243,11 @@ function getActiveVoteMessages(guildId) {
   // search through vote.json and find the message Id on each active vote.
   // then return a list of all messages as an arr.
   const messageArr = [];
-  global.voteData.votes[guildId].forEach(vote => {
-    messageArr.push(vote.message);
-  });
+  if (global.voteData.votes[guildId]) {
+    global.voteData.votes[guildId].forEach(vote => {
+      messageArr.push(vote.message);
+    });
+  }
   return messageArr;
 }
 
