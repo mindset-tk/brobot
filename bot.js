@@ -6,6 +6,7 @@ const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const dbpath = ('./db/');
 const Discord = require('discord.js');
+// discord "give me all intents" bitfield.
 const myIntents = new Discord.Intents(32767);
 const register = require('./register.js');
 // const counting = require('./counting.js'); TODO fix counting
