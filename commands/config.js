@@ -105,7 +105,6 @@ async function prepTables(client, botdb) {
       sqlStatement += '(?, ?, ?),';
       propArr.push(guild[1].id, prop.varName, JSON.stringify(prop.default));
     }
-    console.log(propArr);
     // slice the last comma off the sql statement and make it a semicolon
     sqlStatement = sqlStatement.slice(0, -1) + ';';
     await botdb.run(sqlStatement, ...propArr);
