@@ -71,9 +71,10 @@ async function prepTables(botdb) {
       channel_id TEXT NOT NULL
     )`),
     botdb.run(`CREATE TABLE IF NOT EXISTS event_members (
-      event_id TEXT PRIMARY KEY,
+      event_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      attendance_status TEXT NOT NULL
+      attendance_status TEXT NOT NULL,
+      PRIMARY KEY(event_id, user_id)
     )`),
     botdb.run(`CREATE TABLE IF NOT EXISTS event_roles (
       event_id TEXT PRIMARY KEY,
