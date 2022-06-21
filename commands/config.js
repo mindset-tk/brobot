@@ -105,6 +105,7 @@ async function prepTables(client, botdb) {
       sqlStatement += '(?, ?, ?),';
       propArr.push(guild[1].id, prop.varName, JSON.stringify(prop.default));
     }
+    console.log(propArr);
     // slice the last comma off the sql statement and make it a semicolon
     sqlStatement = sqlStatement.slice(0, -1) + ';';
     await botdb.run(sqlStatement, ...propArr);
@@ -149,9 +150,14 @@ function numToEmoji(int) {
 * @returns {promise} Channel name
 */
 async function getChannelName(channelId, client) {
-  const channelObj = client.channels.fetch(channelId);
-  if (channelObj) {return channelObj.name;}
-  else {return '[invalid or deleted channel]';}
+  if(channelId) {
+    try {
+      const chan = await client.channels.fetch(channelId);
+      return chan.name;
+    }
+    catch { return '[invalid or deleted channel]';}
+  }
+  else { return false; }
 }
 
 /**
@@ -238,7 +244,7 @@ async function generateEmbed(message, config, client, pageNo = 1) {
     .setDescription(`**__${pageDescs[pageArr[pageNo - 1]]}__**\nClick a numbered button to change the corresponding setting, or the arrow buttons to change pages.`)
     .setFooter({ text: `Page ${pageNo} of ${pageArr.length}` });
   let i = 1;
-  configurableProps.forEach(prop =>{
+  for await (const prop of configurableProps) {
     if (prop.page == pageArr[pageNo - 1]) {
       const fieldTitle = `${numToEmoji(i)} ${prop.shortDesc}:`;
       let fieldValue = `${prop.longDesc ? (prop.longDesc + '\n') : ''}`;
@@ -258,13 +264,14 @@ async function generateEmbed(message, config, client, pageNo = 1) {
         fieldValue += `${config[prop.varName] ? getRoleName(config[prop.varName], message.guild) : 'NOT SET' }`;
       }
       else if (prop.varType == 'channel') {
-        fieldValue += `${config[prop.varName] ? '#' + getChannelName(config[prop.varName], client) : 'NOT SET' }`;
+        const chanName = await getChannelName(config[prop.varName], client);
+        fieldValue += `${config[prop.varName] ? `#${chanName}` : 'NOT SET' }`;
       }
       else {fieldValue += `${config[prop.varName].length > 0 ? `${config[prop.varName]}` : 'NOT SET' }`;}
       configEmbed.addField(fieldTitle, fieldValue);
       i++;
     }
-  });
+  }
   const rows = [];
   const firstActionRow = new MessageActionRow();
   const secondActionRow = new MessageActionRow();
@@ -380,7 +387,7 @@ async function configDM(interaction, propToUpdate) {
     Please reply with 'yes' or 'no'.`;
     break;
   case 'channel':
-    msgContent += `${propToUpdate.shortDesc} is currently set to ${config[propToUpdate.varName] ? '#' + getChannelName(config[propToUpdate.varName], interaction.client) : 'NOT SET' }.
+    msgContent += `${propToUpdate.shortDesc} is currently set to ${config[propToUpdate.varName] ? '#' + await getChannelName(config[propToUpdate.varName], interaction.client) : 'NOT SET' }.
     Please reply with a new channel name or channel ID snowflake.`;
     break;
   case 'role':

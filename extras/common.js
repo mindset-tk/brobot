@@ -18,7 +18,7 @@ async function writeConfigTables(botdb, client, guildId = null) {
     for (const [key, value] of Object.entries(configToWrite)) {
       configArr.push(botdb.run(`UPDATE config
         SET value = ?
-        WHERE item = ?;`, JSON.stringify(value), key));
+        WHERE item = ? AND guild_id =?;`, JSON.stringify(value), key, guildId));
     }
     await Promise.all(configArr);
   }

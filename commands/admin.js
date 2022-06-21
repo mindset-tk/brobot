@@ -14,12 +14,12 @@ module.exports = {
     if (!config.roleAdmin || !config.adminHoistToggle) { return; }
     if (!message.member.roles.cache.has(config.roleAdmin)) {
       message.channel.send('Elevating you to Admin.');
-      if (announcements) { announcements.send('@everyone : ' + message.author.displayName + ' has escalated to admin!'); }
+      if (announcements) { announcements.send('@everyone : ' + message.member.displayName + ' has escalated to admin!'); }
       message.member.roles.add(config.roleAdmin);
     }
     else if (message.member.roles.cache.has(config.roleAdmin)) {
       message.channel.send('De-elevating you from Admin.');
-      if (announcements) { announcements.send('@everyone : ' + message.author.displayName + ' has de-escalated from admin!'); }
+      if (announcements) { announcements.send('@everyone : ' + message.member.displayName + ' has de-escalated from admin!'); }
       message.member.roles.remove(config.roleAdmin);
     }
   },

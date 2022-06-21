@@ -12,3 +12,4 @@ events.json
 /.vscode/*
 commands/testcommand.js
 /unused/*
+*.code-workspace
