@@ -52,7 +52,7 @@ function getMessagePermLevel(message) {
     if (message.member.roles.cache.has(config.roleStaff) || message.member.permissions.has('ADMINISTRATOR')) {
       return 'staff';
     }
-    else if (message.member.roles.cache.has(config.roleComrade)) {
+    else if (message.member.roles.cache.has(config.roleUser)) {
       return 'user';
     }
     else {return null;}

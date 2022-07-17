@@ -8,11 +8,11 @@ module.exports = {
   cooldown: 3,
   execute(message, args) {
     const config = getConfig(message.client, message.guild.id);
-    const permLevel = getMessagePermLevel(message.member, message.guild, message.client);
+    const permLevel = getMessagePermLevel(message);
     let data = new String;
     const { commands } = message.client;
     // If the help invoker is staff, give all commands.
-    if (!args.length && permLevel == 'staff') {
+    if (args.length < 1 && permLevel == 'staff') {
       data += 'Here\'s a list of all my commands:\n';
       // map all command names to an array, filter(Boolean) to remove empty values, then join for clean output
       data += commands.map(command => command.name).filter(Boolean).join('\n');
@@ -20,7 +20,7 @@ module.exports = {
       return message.channel.send({ content: data });
     }
     // If the invoker is not staff, but has permission to invoke the command, give only commands available to them.
-    if (!args.length && permLevel == 'user') {
+    if (args.length < 1 && permLevel == 'user') {
       data += 'Here\'s a list of commands available to you:\n';
       // map all non-staffOnly command names to an array, filter(Boolean) to remove empty values, then join for clean output
       data += commands.map(command => {if (!command.staffOnly) return command.name;}).filter(Boolean).join('\n');
