@@ -11,7 +11,7 @@
     "imdb-api": "^4.4.1",
     "md5": "^2.3.0",
     "moment": "^2.29.2",
-    "moment-timezone": "^0.5.34",
+    "moment-timezone": "^0.5.35",
     "rrule": "^2.6.4",
     "sqlite": "^4.0.23",
     "sqlite3": "^5.0.2",
