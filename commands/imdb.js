@@ -4,6 +4,7 @@ const { imdbAPIKey } = require('../apitokens.json');
 const cli = new imdb.Client({ apiKey: imdbAPIKey });
 // TODO convert to embed for output
 // TODO search func
+// TODO slashcommand
 
 module.exports = {
   name: 'film',
@@ -34,11 +35,11 @@ module.exports = {
           .setThumbnail(imdbObj.poster)
           .setAuthor({ name: 'imdb', iconURL: imdbLogo })
           .setDescription(`**Director:** ${imdbObj.director}
-          **Country:** ${imdbObj.country}
-          **Runtime:** ${imdbObj.runtime}
-          **Genres:** ${imdbObj.genres}
+**Country:** ${imdbObj.country}
+**Runtime:** ${imdbObj.runtime}
+**Genres:** ${imdbObj.genres}
 
-          ${imdbObj.plot}`);
+${imdbObj.plot}`);
         message.channel.send({ embeds: [outputEmbed] });
       }
       catch(err) {
