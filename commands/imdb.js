@@ -8,7 +8,7 @@ const cli = new imdb.Client({ apiKey: imdbAPIKey });
 module.exports = {
   name: 'film',
   aliases: ['f,movie'],
-  description: 'Searches IMDB for a movie and returns the first result.',
+  description() { return 'Searches IMDB for a movie and returns the first result.';},
   cooldown: 5,
   usage(config) {
     return `[search query] (year) - Returns the first result. The year is optional but useful for ambiguous titles.

@@ -88,7 +88,7 @@ exports.init = async function(client) {
   });
 
   // pinning process
-  client.on('messageReactionAdd', async reaction => {
+  client.on('messageReactionAdd', async (reaction, user) => {
     if (reaction.partial) {
       try {
         await reaction.fetch();
@@ -101,7 +101,11 @@ exports.init = async function(client) {
     // fetch info about the message the reaction was added to.
     const message = await reaction.message.fetch();
 
+    // return if it's not a pinnable message, or the emoji is not a pin emoji.
     if (!isValidMessage(reaction, message)) return;
+
+    const guild = message.guild;
+    const guildmember = await guild.members.fetch(user);
 
     // then get server-specific config info.
     const config = getConfig(client, message.guild.id);
@@ -117,7 +121,7 @@ exports.init = async function(client) {
       if (!isPinnableToggle(message, reaction, config)) {
         return;
       }
-      pinEmbed.setTitle(`${message.member.displayName} has pinned a message.`);
+      pinEmbed.setTitle(`${guildmember.displayName} has pinned a message.`);
     }
     console.log(`Attempting to pin a message in ${message.channel}`);
     try {
@@ -129,7 +133,7 @@ exports.init = async function(client) {
   });
 
   // unpinning process
-  client.on('messageReactionRemove', async reaction => {
+  client.on('messageReactionRemove', async (reaction, user) => {
     if (reaction.partial) {
       try {
         await reaction.fetch();
@@ -142,6 +146,8 @@ exports.init = async function(client) {
     const message = await reaction.message.fetch();
     const config = getConfig(client, message.guild.id);
     if (!isValidMessage(reaction, message)) return;
+    const guild = message.guild;
+    const guildmember = await guild.members.fetch(user);
     const pinEmbed = new MessageEmbed().setDescription(`[click here to go to the message](${message.url})`);
     if (config.pinMode == 'count') {
       if (!isUnpinnableCount(message, reaction, config)) {
@@ -153,7 +159,7 @@ exports.init = async function(client) {
       if (!isUnpinnableToggle(message, reaction, config)) {
         return;
       }
-      pinEmbed.setTitle(`${message.member.displayName} has unpinned a message.`);
+      pinEmbed.setTitle(`${guildmember.displayName} has unpinned a message.`);
     }
     console.log(`Attempting to unpin a message in ${message.channel}`);
     try {
