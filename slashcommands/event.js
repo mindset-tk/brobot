@@ -2305,7 +2305,7 @@ module.exports = {
       for(const [ , g] of client.guilds.cache) {
         const config = getConfig(client, g.id);
         if (!config.eventInfoChannelId) {
-          console.log(`No event info channel set for ${g.id}, skipping.`);
+          console.log(`No event info channel set for ${g.id} / ${g.name}, skipping.`);
         }
         else {
           console.log(
