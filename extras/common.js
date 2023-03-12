@@ -245,6 +245,40 @@ function isTextChannel(channel) {
   return false;
 }
 
+const emojiRegex = require('emoji-regex');
+const unicodeEmojiTest = emojiRegex();
+const discordEmojiTest = new RegExp(/<a?:.+?:(\d+)>$/);
+
+/**
+* Test if input is a unicode or Discord emoji mention, and if it can be posted by the bot (eg, is not animated or from a different server.)
+* @param message Discord message object
+* @param emoji string to test
+*
+* @returns postable emoji string, if emoji can be posted by the bot, false if not.
+*/
+async function validateEmoji(client, emoji) {
+  // first check if the string contains exactly one unicode emoji and nothing more.
+  if (emoji.match(unicodeEmojiTest)) {
+    if (emoji == emoji.match(unicodeEmojiTest)[0] && emoji.match(unicodeEmojiTest).length == 1) {
+      return emoji;
+    }
+  }
+  // if not, test if it's a single custom emoji that the bot can access.
+  try {
+    if (discordEmojiTest.test(emoji)) {
+      emoji = await client.emojis.resolve(discordEmojiTest.exec(emoji)[1]);
+      if (emoji && emoji.available) {
+        return `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>`;
+      }
+    }
+  }
+  catch (err) {
+    console.error(err.message);
+    return false;
+  }
+  return false;
+}
+
 module.exports = {
   getMessagePermLevel,
   getUserPermLevel,
@@ -255,4 +289,5 @@ module.exports = {
   getConfig,
   writeConfigTables,
   isTextChannel,
+  validateEmoji,
 };

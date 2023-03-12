@@ -4,10 +4,8 @@
 // https://github.com/Sciman101/JNFR/blob/master/commands/emojirole.js
 // TODO: add function to move a post to a new channel.
 const { MessageEmbed } = require('discord.js');
-const emojiRegex = require('emoji-regex');
-const unicodeEmojiTest = emojiRegex();
 const discordEmojiTest = new RegExp(/<a?:.+?:(\d+)>$/);
-const { getConfig } = require('../extras/common.js');
+const { getConfig, validateEmoji } = require('../extras/common.js');
 
 async function prepTables(botdb) {
   // debug stuff
@@ -240,32 +238,6 @@ async function getPostbyLabel(message, label, botdb) {
 
 
 /**
-* Test if input is a unicode or Discord emoji mention, and if it can be posted by the bot (eg, is not animated or from a different server.)
-* @param message Discord message object
-* @param emoji string to test
-*
-* @returns postable emoji string, if emoji can be posted by the bot, false if not.
-*/
-async function validateEmoji(message, emoji) {
-  // first check if the string contains exactly one unicode emoji and nothing more.
-  if (emoji.match(unicodeEmojiTest) && emoji == emoji.match(unicodeEmojiTest)[0]) {
-    return emoji;
-  }
-  // if not, test if it's a single custom emoji that the bot can access.
-  try {
-    if (discordEmojiTest.test(emoji)) {
-      emoji = await message.client.emojis.resolveId(discordEmojiTest.exec(emoji)[1]);
-      return `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>`;
-    }
-  }
-  catch (err) {
-    console.error(err.message);
-    return false;
-  }
-  return false;
-}
-
-/**
 * Search db for emoji with a post id.
 * @param messageId message id of post
 * @param emoji emoji to search for in db; if null this returns an array of all emoji items on the post.
@@ -441,7 +413,7 @@ async function addRoleToPost(message, args, botdb) {
   if (!post) { return message.reply(`Couldn't find a post with label '${label}'!`); }
 
   const emoji = args.shift();
-  const cleanEmoji = await validateEmoji(message, emoji);
+  const cleanEmoji = await validateEmoji(message.client, emoji);
   if(!cleanEmoji) {
     return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from any server that this bot is present in.`);
   }
@@ -490,7 +462,7 @@ async function removeRoleFromPost(message, args, botdb) {
   if (!post) { return message.reply(`Couldn't find a post with label '${label}'!`); }
 
   const emoji = args.shift();
-  const cleanEmoji = await validateEmoji(message, emoji);
+  const cleanEmoji = await validateEmoji(message.client, emoji);
   if(!cleanEmoji) {
     return message.reply(`'${emoji}' is either not a single unicode emoji, or not an emoji from any server that this bot is present in.`);
   }

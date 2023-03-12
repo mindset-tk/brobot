@@ -411,4 +411,16 @@ client.on('guildMemberRemove', async member => {
   console.log(exitConLog);
 });
 
+// joined a server
+client.on('guildCreate', guild => {
+  console.log('Joined a new guild: ' + guild.name);
+  // Your other stuff like adding to guildArray
+});
+
+// removed from a server
+client.on('guildDelete', guild => {
+  console.log('Left a guild: ' + guild.name);
+  // remove from guildArray
+});
+
 process.on('unhandledRejection', error => console.error('Uncaught Promise Rejection! Error details:\n', error));
