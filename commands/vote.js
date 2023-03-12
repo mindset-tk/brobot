@@ -1,4 +1,5 @@
-// TODO: test multi-server?
+// TODO: test multi-server
+// TODO: convert to SQL
 const Discord = require('discord.js');
 const moment = require('moment-timezone');
 const fs = require('fs');

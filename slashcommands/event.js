@@ -2,13 +2,10 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { MessageActionRow, MessageButton, Collection, MessageEmbed, Constants } = require('discord.js');
 const moment = require('moment-timezone');
 const tz = require('../extras/timezones');
-const { promptForMessage, promptYesNo, getUserPermLevel, getConfig } = require('../extras/common.js');
+const { promptForMessage, promptYesNo, getUserPermLevel, getConfig, validateEmoji } = require('../extras/common.js');
 const { performance } = require('perf_hooks');
 const Sugar = require('sugar-date');
 const { RRule } = require('rrule');
-const emojiRegex = require('emoji-regex');
-const unicodeEmojiTest = emojiRegex();
-const discordEmojiTest = new RegExp(/<a?:.+?:(\d+)>$/);
 
 function generateTimeZoneEmbed() {
   const zonesByRegion = new Collection();
@@ -262,7 +259,7 @@ class EventManager {
   }
 
   /**
-   * TODO: Save a single event to SQLite (instead of rewriting the whole table)
+   * TODO: Create a function to save a single event to SQLite (instead of rewriting the whole table)
    */
 
   /**
@@ -340,8 +337,8 @@ class EventManager {
                 events.delete(eventid);
               }
               else {
-                // TODO also reset attendance list?
-                // TODO update event embeds in non-event channels to signify that event is completed
+                // TODO reset attendance list for each recurrence?
+                // TODO update event embeds in non-event channels to signify that event is completed, and post fresh embed.
                 // Get a new start date.
                 event.start = moment(nextOccurence).tz('UTC').tz(event.timezone, true);
                 for(const [, message] of event.posts) {
@@ -723,32 +720,6 @@ function generateStartStr(date) {
 }
 
 /**
-* Test if input is a unicode or Discord emoji mention, and if it can be posted by the bot (eg, is not animated or from a different server.)
-* @param message Discord message object
-* @param emoji string to test
-*
-* @returns postable emoji string, if emoji can be posted by the bot, false if not.
-*/
-async function validateEmoji(message, emoji) {
-  // first check if the string contains exactly one unicode emoji and nothing more.
-  if (emoji.match(unicodeEmojiTest) && emoji == emoji.match(unicodeEmojiTest)[0]) {
-    return emoji;
-  }
-  // if not, test if it's a single custom emoji that the bot can access.
-  try {
-    if (discordEmojiTest.test(emoji)) {
-      emoji = await message.client.emojis.resolveId(discordEmojiTest.exec(emoji)[1]);
-      return `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>`;
-    }
-  }
-  catch (err) {
-    console.error(err.message);
-    return false;
-  }
-  return false;
-}
-
-/**
  * Convert a duration in minutes to a string for display ('1 day, 2 hours, 5 minutes')
  *
  * @param {Number} minutes;
@@ -805,7 +776,7 @@ function generateEditEmbed(event) {
   let attOptStr = '';
   let durationStr = '';
   for(const obj of event.attendanceOptions.values()) {
-    attOptStr += `${obj.emoji} - ${obj.description}\n`;
+    attOptStr += `${obj.emoji}${obj.description ? ` - ${obj.description}` : ''}\n`;
   }
   if (attOptStr.length > 1) { attOptStr = attOptStr.slice(0, -1); }
   else { attOptStr = '-'; }
@@ -1187,7 +1158,7 @@ async function dmPromptDuration(dmChannel, event, mode = 'new') {
     replystr = 'Please provide a duration for your event in the following format:';
     break;
   }
-  replystr += `\n> Instantaneous
+  replystr += `\n> Instantaneous / None / Skip (any of these will work)
   > 1 minute
   > 2.5 hours
   > 2 hours, 15 minutes
@@ -1216,6 +1187,7 @@ async function dmPromptDuration(dmChannel, event, mode = 'new') {
       return 'abort';
     case 'instantaneous':
     case 'skip':
+    case 'none':
       break;
     default:
       [durationMinutes, wrongArr] = getDurationMinutes(content);
@@ -1333,21 +1305,32 @@ async function dmPromptAttOpts(dmChannel, event, mode = 'new') {
     if (Number(content)) {
       content = Number(content);
     }
+    let emojiMap = new Map();
     switch(content) {
     case 1:
-      event.attendanceOptions.clear();
-      event.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
-      event.attendanceOptions.set(2, { emoji: '❓', description: 'Maybe' });
-      event.attendanceOptions.set(3, { emoji: '❌', description: 'Decline' });
+      emojiMap.set(1, { emoji: '✅', description: 'Accept' });
+      emojiMap.set(2, { emoji: '❓', description: 'Maybe' });
+      emojiMap.set(3, { emoji: '❌', description: 'Decline' });
+      event.attendanceOptions = emojiMap;
       return true;
     case 2:
-      event.attendanceOptions.clear();
-      event.attendanceOptions.set(1, { emoji: '✅', description: 'Accept' });
-      event.attendanceOptions.set(3, { emoji: '❌', description: 'Decline' });
-      break;
-    // not currently implemented.
-    // case 3:
-    //  return await dmCustomAttOpt(dmChannel, event);
+      emojiMap.set(1, { emoji: '✅', description: 'Accept' });
+      emojiMap.set(2, { emoji: '❌', description: 'Decline' });
+      event.attendanceOptions = emojiMap;
+      return true;
+    case 3:
+      emojiMap = await dmCustomAttOpt(dmChannel, event, mode);
+      if (emojiMap == 'retry') {
+        dmChannel.send({ embeds: [embed] });
+        return 'retry';
+      }
+      else if (!emojiMap) {
+        return 'abort';
+      }
+      else {
+        event.attendanceOptions = emojiMap;
+        return true;
+      }
     case 'cancel':
     case 'abort':
       return 'abort';
@@ -1369,16 +1352,212 @@ async function dmPromptAttOpts(dmChannel, event, mode = 'new') {
   }
 }
 
-async function dmCustomAttOpt(dmChannel, event) {
-  dmChannel.send('Ok, a custom set of emoji. I can include up to 3');
+async function dmCustomAttOpt(dmChannel, event, mode) {
+  let eMap = new Map();
+  dmChannel.send(`Ok, a custom set of emoji. I can include up to 3. This bot can use custom emoji from any server that it is a member of.
+  Note: If you do not have discord nitro, but want to use custom emoji, you must convert it to discord markup.
+  Type **info** if you need information on how to do this.  You may also type **back** to return to the non-custom emoji options.
+  **Otherwise, please type up to 3 emoji separated by a comma.**  An optional description for each emoji can be set up next.`);
+  const result = await promptForMessage(dmChannel, async (reply) => {
+    // reply handling part 1, handle special options
+    const content = reply.content.trim();
+    if (content.toLowerCase() === 'info') {
+      dmChannel.send(`In the backend of discord, non-standard emojis are formatted in the following way:
+      \`<:emojiname:123456789>\` for static emoji, and
+      \`<a:emojiname:123456789>\` for animated emoji; in both cases '123456789' is the snowflake id of the emoji.
+      An easy way to convert an emoji to this format is to type \`\\:emojiname:\` in a server you can post the emoji and **send it**.
+      The output into the text channel will be the discord markup format. 
+      You can also extract the emoji ID by hand by right clicking a posted emoji and choosing "open link".
+      REMEMBER: THIS BOT MUST BE ABLE TO SEE THE EMOJI TO POST IT, and therefore must be in the server you select an emoji from.
+      Now, **Please type up to 3 emoji separated by a comma.**`);
+      return 'retry';
+    }
+    else if (content.toLowerCase() === 'back') {
+      return 'back';
+    }
+    else if (content.toLowerCase() === 'cancel' || content.toLowerCase() === 'abort') {
+      return false;
+    }
+    // reply handling - trim extraneous spaces and split to array at commas.
+    const emojiArr = content.split(',');
+    emojiArr.forEach((str, i) =>{
+      emojiArr[i] = str.trim();
+    });
+    if(emojiArr.length > 3) {
+      dmChannel.send('I\'m sorry, that was too many items! Please type only 3 emoji, separated by commas.');
+      return 'retry';
+    }
+    else if (emojiArr.length > 0) {
+      const invalidEntries = [];
+      for (const [i, eStr] of emojiArr.entries()) {
+        const emoji = await validateEmoji(dmChannel.client, eStr);
+        if (emoji) {
+          emojiArr[i] = emoji;
+        }
+        else {
+          invalidEntries.push(eStr);
+        }
+      }
+      if (invalidEntries.length > 0) {
+        dmChannel.send(`I'm sorry, the following items in your list of emoji were invalid:
+        ${invalidEntries.join(', ')}
+        Either this bot is not in a server that has those emoji, or they are not valid emoji.
+        Please type up to 3 emoji separated by a comma, 'back' to return to the standard emoji options, or 'abort' to cancel this wizard and lose all changes.`);
+        return 'retry';
+      }
+      else {
+        dmChannel.send(`Great! The emoji for this event will be ${emojiArr.join(', ')}. Is this OK?  **Y/N**`);
+        let YN = await promptYesNo(dmChannel, {
+          messages: {
+            no: 'OK, Please type up to 3 emoji separated by a comma, \'back\' to return to the standard emoji options, or \'abort\' to cancel this wizard and lose all changes.',
+            cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+            invalid: `Reply not recognized! Please answer Y or N. The emoji for this event will be ${emojiArr.join(', ')}. Is this OK?  **Y/N**`,
+          },
+        });
+        if (YN !== false) {
+          switch (YN.answer) {
+          case true:
+            break;
+          case false:
+            return 'retry';
+          }
+        }
+        else { return 'abort'; }
+        dmChannel.send('Would you like to set a description for these emoji? For example \'✅ - Accept\' **Y/N**');
+        YN = await promptYesNo(dmChannel, {
+          messages: {
+            no: 'OK, great.',
+            cancel: `Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`,
+            invalid: 'Reply not recognized! Please answer Y or N. Would you like to set a description for these emoji? For example \'✅ - Accept\' **Y/N**',
+          },
+        });
+        if (YN !== false) {
+          switch (YN.answer) {
+          case true:
+            eMap = await dmCustomAttOptDesc(dmChannel, event, emojiArr, mode);
+            return eMap;
+          case false:
+            eMap.clear();
+            emojiArr.map((emoji, idx) => {
+              eMap.set(idx + 1, { emoji: emoji, description: '' });
+            });
+            return eMap;
+          }
+        }
+        else { return 'abort'; }
+      }
+    }
+  });
+  if (result === 'back') {
+    return 'retry';
+  }
+  else { return result; }
+}
+
+async function dmCustomAttOptDesc(dmChannel, event, emojiArr, mode = 'new') {
+  let done = false;
+  const descArr = [];
+  let YN = {};
+  dmChannel.send('We will go through each emoji one by one.');
+  while (!done) {
+    for (const [i, emoji] of emojiArr.entries()) {
+      dmChannel.send(`What would you like the description of ${emoji} to be? No more than 15 characters.  You may also enter 'none' to have no description for this particular entry.`);
+      const result = await promptForMessage(dmChannel, async (reply) => {
+        const content = reply.content.trim();
+        if (content.length > 15) {
+          dmChannel.send(`Description must be 15 characters or less.  Please enter a description for ${emoji},'none' to have no description, or 'cancel' to quit this process entirely without saving changes.`);
+          return 'retry';
+        }
+        switch(content.toLowerCase()) {
+        case 'back':
+          dmChannel.send('Sorry, \'back\' is a keyword that can\'t be used here. Please enter a new name, or \'cancel\' to quit this process.');
+          return 'retry';
+        case 'cancel':
+        case 'abort':
+          dmChannel.send(`Event ${mode === 'edit' ? 'editing' : 'creation'} cancelled. Please perform the command again to restart this process.`);
+          return 'abort';
+        case 'none':
+          dmChannel.send(`Great! No description for ${emoji}. Is this OK?  **Y/N**`);
+          YN = await promptYesNo(dmChannel, {
+            messages: {
+              no: `OK, please type a new description of ${emoji}, 'none', or 'cancel' to quit this process entirely without saving changes.`,
+              cancel: 'Event creation cancelled. Please perform the command again to restart this process.',
+              invalid: `Reply not recognized! Please answer Y or N. No description for ${emoji}. Is this OK? **Y/N**`,
+            },
+          });
+          if (YN !== false) {
+            switch (YN.answer) {
+            case true:
+              descArr[i] = '';
+              return true;
+            case false:
+              return 'retry';
+            }
+          }
+          else { return 'abort'; }
+          break;
+        default:
+          dmChannel.send(`Great! The description will be **${content}**. Is this OK?  **Y/N**`);
+          YN = await promptYesNo(dmChannel, {
+            messages: {
+              no: `OK, please type a new description of ${emoji}, 'none', or 'cancel' to quit this process entirely without saving changes.`,
+              cancel: 'Event creation cancelled. Please perform the command again to restart this process.',
+              invalid: `Reply not recognized! Please answer Y or N. Is **${content}** an acceptable name for the event? **Y/N**`,
+            },
+          });
+          if (YN !== false) {
+            switch (YN.answer) {
+            case true:
+              return descArr[i] = content;
+            case false:
+              return 'retry';
+            }
+          }
+          else { return 'abort'; }
+        }
+      });
+      if (!result) {return false;}
+    }
+    let attOptStr = '';
+    for (const [i, emoji] of emojiArr.entries()) {
+      attOptStr += `${emoji}${descArr[i] ? ` - ${descArr[i]}` : ' - (no description)'}\n`;
+    }
+    attOptStr = attOptStr.trim();
+    dmChannel.send(`Great! Your emoji and their descriptions are:
+    ${attOptStr}.
+    Does this look OK to you?`);
+    YN = await promptYesNo(dmChannel, {
+      messages: {
+        cancel: 'Event creation cancelled. Please perform the command again to restart this process.',
+        invalid: `Reply not recognized! Please answer Y or N. Your emoji and their descriptions are:
+        ${attOptStr}.
+        Does this look OK to you? **Y/N**`,
+      },
+    });
+    if (YN !== false) {
+      switch (YN.answer) {
+      case true:
+        done = true;
+        break;
+      case false:
+        break;
+      }
+    }
+    else { return false; }
+  }
+  const eMap = new Map();
+  for (const [i, emoji] of emojiArr.entries()) {
+    eMap.set(i + 1, { emoji: emoji, description: descArr[i] });
+  }
+  return eMap;
 }
 
 async function dmPromptRole(dmChannel, event, mode = 'new') {
-  dmChannel.send('roles are not yet settable at this time');
+  console.log('roles are not yet settable at this time');
   return [event, true];
 }
 async function dmPromptAutoDelete(dmChannel, event, mode = 'new') {
-  dmChannel.send('roles are not yet settable at this time');
+  console.log('roles are not yet settable at this time');
   return [event, true];
 }
 
@@ -2002,7 +2181,7 @@ async function generatePost(event) {
       }
     }
     else {fieldVal.push('-');}
-    embed.addField(`${opts.emoji} - ${opts.description}`, fieldVal.join('\n'), true);
+    embed.addField(`${opts.emoji}${opts.description ? ` - ${opts.description}` : ''}`, fieldVal.join('\n'), true);
     const button = new MessageButton();
     button.setCustomId(`eventAttendance${opts.emoji}`)
       .setEmoji(opts.emoji)
@@ -2223,28 +2402,35 @@ async function createEvent(interaction) {
       }
       break;
     }
+    if (!result || result === 'cancel') {
+      createLoop = false;
+      newEvent = null;
+    }
     i++;
   }
-  const config = getConfig(interaction.client, interaction.guildId);
-  let eventInfoChannel;
-  try {eventInfoChannel = await interaction.client.channels.fetch(config.eventInfoChannelId);}
-  catch {eventInfoChannel = null;}
-  let newPost;
-  if (eventInfoChannel && eventInfoChannel.id != newEvent.channel.id) {
-    const newEvtChnPost = await postEventEmbed(newEvent, eventInfoChannel);
-    newEvent.posts.set(newEvtChnPost.id, newEvtChnPost);
-  }
+  if (newEvent) {
+    const config = getConfig(interaction.client, interaction.guildId);
+    let eventInfoChannel;
+    try {eventInfoChannel = await interaction.client.channels.fetch(config.eventInfoChannelId);}
+    catch {eventInfoChannel = null;}
+    let newPost;
+    if (eventInfoChannel && eventInfoChannel.id != newEvent.channel.id) {
+      const newEvtChnPost = await postEventEmbed(newEvent, eventInfoChannel);
+      newEvent.posts.set(newEvtChnPost.id, newEvtChnPost);
+    }
 
-  if (newEvent.channel.id == interaction.channel.id) {
-    const msgPayload = await generatePost(newEvent);
-    newPost = await interaction.editReply(msgPayload);
+    if (newEvent.channel.id == interaction.channel.id) {
+      const msgPayload = await generatePost(newEvent);
+      newPost = await interaction.editReply(msgPayload);
+    }
+    else {
+      newPost = await postEventEmbed(newEvent, newEvent.channel);
+      await interaction.editReply({ content: `Your event has been posted in ${newEvent.channel.id}`, ephemeral: true });
+    }
+    newEvent.posts.set(newPost.id, newPost);
+    await eventManager.set(newEvent);
   }
-  else {
-    newPost = await postEventEmbed(newEvent, newEvent.channel);
-    await interaction.editReply({ content: `Your event has been posted in ${newEvent.channel.id}`, ephemeral: true });
-  }
-  newEvent.posts.set(newPost.id, newPost);
-  await eventManager.set(newEvent);
+  else {await interaction.editReply({ content: 'Event creation cancelled!', ephemeral: true });}
 }
 
 module.exports = {
@@ -2256,16 +2442,7 @@ module.exports = {
     .addSubcommand(subcommand =>
       subcommand
         .setName('create')
-        .setDescription('create an event')
-        .addStringOption(option => option
-          .setName('name')
-          .setDescription('name for event'))
-        .addChannelOption(option => option
-          .setName('channel')
-          .setDescription('Channel for event'))
-        .addStringOption(option => option
-          .setName('start')
-          .setDescription('unix start time for event')))
+        .setDescription('create an event'))
     .addSubcommand(subcommand =>
       subcommand
         .setName('edit')
@@ -2283,11 +2460,10 @@ module.exports = {
     switch(subCommand) {
     case 'create':
       await createEvent(interaction);
-      // JSON.parse();
       break;
-    case 'tz':
+    /* case 'tz':
       interaction.reply({ embeds: [TZEMBED] });
-      break;
+      break; */
     case 'edit':
       interaction.reply('edit');
       break;
@@ -2338,7 +2514,6 @@ module.exports = {
     }
     // interaction listener
     client.on('interactionCreate', async interaction => {
-      // only staff/admins can manage config.
       if (!(interaction.isButton() && interaction.customId.startsWith('event'))) return;
       if (!await getEventByPost(interaction)) {
         const newRows = [];
