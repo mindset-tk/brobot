@@ -14,7 +14,7 @@
     "moment-timezone": "^0.5.34",
     "rrule": "^2.6.4",
     "sqlite": "^4.0.23",
-    "sqlite3": "^5.0.2",
+    "sqlite3": "^5.1.5",
     "sugar-date": "^2.0.6",
     "wikijs": "^6.3.3",
     "ytdl": "^1.4.1"
