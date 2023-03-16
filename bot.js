@@ -1,7 +1,7 @@
 // require the filesystem and discord.js modules
 require('console-stamp')(console, { format: ':date(mm/dd/yy HH:MM:ss)' });
 const fs = require('fs');
-// const fsp = fs.promises;
+// const fsp = fs.promises; probably can be removed?
 const sqlite3 = require('sqlite3');
 const { open } = require('sqlite');
 const dbpath = ('./db/');
