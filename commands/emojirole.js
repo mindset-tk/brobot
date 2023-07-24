@@ -98,7 +98,7 @@ module.exports = {
         // Give the role to the user!
         const role = await message.guild.roles.fetch(emojiData.role_id);
         const member = await message.guild.members.fetch(user.id.toString());
-        if (role && member && member.roles.cache.has(role.id)) {
+        if (role && member && !member.roles.cache.has(role.id)) {
           await member.roles.add(role);
           try {
             await member.send({ content: `Gave you the ${role.name} role!` });
