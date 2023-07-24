@@ -237,6 +237,7 @@ client.on('messageCreate', async message => {
   if ((isTextChannel(message.channel)) && !(permLevel == 'staff' || permLevel == 'user')) return;
   const args = message.content.slice(config.prefix.length).split(/ +/);
   let commandName = args.shift().toLowerCase();
+  if (!commandName || commandName == '') return;
 
   // handle using help as an argument - transpose '!command help' to !help command
   if (args[0] && args[0].toLowerCase() === 'help' && client.commands.has(commandName)) {
