@@ -8,7 +8,7 @@ const cli = new imdb.Client({ apiKey: imdbAPIKey });
 
 module.exports = {
   name: 'film',
-  aliases: ['f,movie'],
+  aliases: ['f', 'movie', 'imdb'],
   description() { return 'Searches IMDB for a movie and returns the first result.';},
   cooldown: 5,
   usage(config) {

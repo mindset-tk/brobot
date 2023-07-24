@@ -256,7 +256,7 @@ module.exports = {
   name: 'vote',
   description() { return 'generates a message that can be voted on with reactions.';},
   usage() { return '';},
-  aliases: 'poll',
+  aliases: ['poll'],
   cooldown: 3,
   guildOnly: true,
   staffOnly: false,
