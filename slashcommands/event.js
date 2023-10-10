@@ -27,7 +27,7 @@ function generateTimeZoneEmbed() {
       i++;
       fieldVal += `**${i}.** ${zone.name}\n`;
     }
-    tzEmbed.addField(region, fieldVal, true);
+    tzEmbed.addFields({ name: region, value: fieldVal, inline: true });
   }
   tzEmbed.setFooter({ text: 'To exit type \'cancel\'.' });
   tzEmbed.setTitle('Enter your time zone\'s number');
@@ -1551,7 +1551,7 @@ async function dmCustomAttOptDesc(dmChannel, event, emojiArr, mode = 'new') {
   }
   return eMap;
 }
-
+// TODO set up roles section
 async function dmPromptRole(dmChannel, event, mode = 'new') {
   console.log('roles are not yet settable at this time');
   return [event, true];
@@ -2181,7 +2181,7 @@ async function generatePost(event) {
       }
     }
     else {fieldVal.push('-');}
-    embed.addField(`${opts.emoji}${opts.description ? ` - ${opts.description}` : ''}`, fieldVal.join('\n'), true);
+    embed.addFields({ name: `${opts.emoji}${opts.description ? ` - ${opts.description}` : ''}`, value: fieldVal.join('\n'), inline: true });
     const button = new MessageButton();
     button.setCustomId(`eventAttendance${opts.emoji}`)
       .setEmoji(opts.emoji)

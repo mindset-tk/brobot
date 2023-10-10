@@ -307,6 +307,7 @@ client.on('inviteCreate', async () => {
 
 // Connection error logging
 client.on('shardError', err => {
+  console.error(err);
   console.log('Connection Error! The error was: "' + err.message + '". Will automatically attempt to reconnect.');
 });
 

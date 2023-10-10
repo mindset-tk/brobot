@@ -343,7 +343,7 @@ async function generateEmbed(post, botdb) {
       fieldContents += `${e.emoji} - ${e.name}\n`;
     });
   });
-  newEmbed.addField('React to give yourself a role.', fieldContents);
+  newEmbed.addFields({ name: 'React to give yourself a role.', value: fieldContents });
   return newEmbed;
 }
 

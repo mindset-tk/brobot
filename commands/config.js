@@ -270,7 +270,7 @@ async function generateEmbed(message, config, client, pageNo = 1) {
         fieldValue += (typeof config[prop.varName] === 'number') ? parseInt(config[prop.varName]) : 'NOT SET';
       }
       else {fieldValue += `${config[prop.varName].length > 0 ? `${config[prop.varName]}` : 'NOT SET' }`;}
-      configEmbed.addField(fieldTitle, fieldValue);
+      configEmbed.addFields({ name: fieldTitle, value: fieldValue });
       i++;
     }
   }
